@@ -27,9 +27,11 @@ class AirSimDroneEnv(AirSimEnv):
         self.action_space = spaces.Discrete(7)
         self._setup_flight()
 
-        self.image_request = airsim.ImageRequest(
-            3, airsim.ImageType.DepthPerspective, True, False
-        )
+        self.lidar_name = "LidarSensor1"
+
+        # self.image_request = airsim.ImageRequest(
+        #     3, airsim.ImageType.DepthPerspective, True, False
+        # )
     
     def __del__(self):
         self.drone.reset()
@@ -43,23 +45,36 @@ class AirSimDroneEnv(AirSimEnv):
         self.drone.moveToPositionAsync(0, 0, -10, 50).join()
         self.drone.moveByVelocityAsync(0, 0, 0, 5).join()
     
-    def transform_obs(self, responses):
-        img1D = np.array(responses[0].image_data_float, dtype=np.float32)
-        img1D = 255 / np.maximum(np.ones(img1D.size), img1D)
+    # def transform_obs(self, responses):
+    #     img1D = np.array(responses[0].image_data_float, dtype=np.float32)
+    #     img1D = 255 / np.maximum(np.ones(img1D.size), img1D)
         
-        img2D = np.reshape(img1D, (responses[0].height, responses[0].width))
+    #     img2D = np.reshape(img1D, (responses[0].height, responses[0].width))
 
-        from PIL import Image
+    #     from PIL import Image
 
-        image = Image.fromarray(img2D)
+    #     image = Image.fromarray(img2D)
 
-        img_final = np.array(image.resize((84, 84)).convert("L"))
+    #     img_final = np.array(image.resize((84, 84)).convert("L"))
 
-        return img_final.reshape([84, 84, 1])
+    #     return img_final.reshape([84, 84, 1])
+
+    def transform_obs(self, lidar_data):
+        # Convert LiDAR data to a suitable format for the observation space
+        points = np.array(lidar_data.point_cloud, dtype=np.float32)
+        points = points.reshape(-1, 3)  # Reshape into Nx3 array of points
+        
+        # You can transform the points to an image or any other representation as needed
+        return points
     
     def _get_obs(self):
-        responses = self.drone.simGetImages([self.image_request])
-        image = self.transform_obs(responses)
+        # responses = self.drone.simGetImages([self.image_request])
+        # image = self.transform_obs(responses)
+
+        lidar_data = self.drone.getLidarData(lidar_name=self.lidar_name)
+        if len(lidar_data.point_cloud) < 3:
+            return np.zeros(self.image_shape)
+        image = self.transform_obs(lidar_data)
         self.drone_state = self.drone.getMultirotorState()
 
         self.state["prev_position"] = self.state["position"]
