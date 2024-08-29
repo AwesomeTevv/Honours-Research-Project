@@ -5,11 +5,11 @@ import time
 
 from stable_baselines3 import DQN
 from stable_baselines3.common.monitor import Monitor
-# from stable_baselines3.common.vec_env import dummy_vec_env, vec_transpose
 from stable_baselines3.common.vec_env import DummyVecEnv, VecTransposeImage
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import EvalCallback
 
+# Create a DummyVecEnv for main airsim gym env
 env = DummyVecEnv(
     [
         lambda: Monitor(
@@ -26,7 +26,7 @@ env = DummyVecEnv(
 # Wrap env as VecTransposeImage to allow SB to handle frame observations
 env = VecTransposeImage(env)
 
-# Initialise RL algorithm type and parameters
+# Initialize RL algorithm type and parameters
 model = DQN(
     "CnnPolicy",
     env,
@@ -34,17 +34,17 @@ model = DQN(
     verbose=1,
     batch_size=32,
     train_freq=4,
-    target_update_interval=10_000,
-    learning_starts=10_000,
-    buffer_size=500_000,
+    target_update_interval=10000,
+    learning_starts=10000,
+    buffer_size=500000,
     max_grad_norm=10,
     exploration_fraction=0.1,
     exploration_final_eps=0.01,
-    device="cuda",
-    tensorboard_log="./tb_logs/"
+    device="cpu",
+    tensorboard_log="./tb_logs/",
 )
 
-# Create an evaluation callback with the same env, called every 10_000 iteration
+# Create an evaluation callback with the same env, called every 10000 iterations
 callbacks = []
 eval_callback = EvalCallback(
     env,
@@ -52,8 +52,9 @@ eval_callback = EvalCallback(
     n_eval_episodes=5,
     best_model_save_path=".",
     log_path=".",
-    eval_freq=10_000
+    eval_freq=10000,
 )
+callbacks.append(eval_callback)
 
 kwargs = {}
 kwargs["callback"] = callbacks
