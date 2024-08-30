@@ -22,7 +22,9 @@ class TestEnv(AirSimEnv):
         self._setup_flight()
 
         self.lidar_request = airsim.LidarData()
-        self.goal_position = np.array([50, 0, -10])  # 50 meters in front of starting position
+        self.goal_position = np.array([5.0, 5.0, -10.0])  # 50 meters in front of starting position
+
+        self.max_distance = 15
 
     def __del__(self):
         self.drone.reset()
@@ -79,11 +81,17 @@ class TestEnv(AirSimEnv):
             self.state["position"].z_val
         ]))
 
+        print(f"Current position: [{self.state['position'].x_val:.2f}, {self.state['position'].y_val:.2f}, {self.state['position'].z_val:.2f}]")
+        print(f"Current distance to goal: {dist_to_goal}")
+
         if self.state["collision"]:
             reward = -100
             done = True
-        elif dist_to_goal < 3:  # Within 3 meters of the goal
+        elif dist_to_goal < 1:  # Within 3 meters of the goal
             reward = 100
+            done = True
+        elif dist_to_goal > self.max_distance:  # Too far from goal
+            reward = -50
             done = True
         else:
             reward = -0.01 * dist_to_goal  # Small negative reward based on distance to goal
@@ -100,6 +108,7 @@ class TestEnv(AirSimEnv):
 
     def reset(self):
         self._setup_flight()
+        print("Reset!")
         return self._get_obs()
 
     def interpret_action(self, action):
