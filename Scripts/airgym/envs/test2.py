@@ -21,7 +21,8 @@ class PPOEnv(AirSimEnv):
         self.start_time = None
         self.max_duration = 30  # 30 seconds time limit
         self.max_distance = 15  # 15 meters maximum distance
-        self.target_distance = 5  # 5 meters ahead
+        
+        self.goal_position = np.array([5.0, 5.0, -10.0])  # Specified goal position
 
         self._setup_flight()
 
@@ -30,13 +31,11 @@ class PPOEnv(AirSimEnv):
         self.drone.enableApiControl(True)
         self.drone.armDisarm(True)
 
+        # Set home position and velocity
+        self.drone.moveToPositionAsync(0, 0, -10, 5).join()
+        self.drone.moveByVelocityAsync(0, 0, 0, 1).join()
+
         self.start_position = self.drone.getMultirotorState().kinematics_estimated.position
-        self.target_position = airsim.Vector3r(
-            self.start_position.x_val + self.target_distance,
-            self.start_position.y_val,
-            self.start_position.z_val
-        )
-        self.drone.moveToPositionAsync(self.start_position.x_val, self.start_position.y_val, self.start_position.z_val, 5).join()
         self.start_time = time.time()
 
     def _get_obs(self):
@@ -70,14 +69,14 @@ class PPOEnv(AirSimEnv):
 
     def _compute_reward(self):
         drone_state = self.drone.getMultirotorState().kinematics_estimated.position
-        dist_to_target = self.distance_to_target(drone_state)
+        dist_to_goal = self.distance_to_goal(drone_state)
         
         collision_info = self.drone.simGetCollisionInfo()
         
         if collision_info.has_collided:
             reward = -100
             done = True
-        elif dist_to_target < 1:  # If within 1 meter of the target
+        elif dist_to_goal < 1:  # If within 1 meter of the goal
             reward = 100
             done = True
         elif self.distance_from_start(drone_state) > self.max_distance:
@@ -87,16 +86,14 @@ class PPOEnv(AirSimEnv):
             reward = -50
             done = True
         else:
-            reward = -dist_to_target  # Negative distance as reward
+            reward = -dist_to_goal  # Negative distance as reward
             done = False
         
         return reward, done
 
-    def distance_to_target(self, drone_state):
-        return np.linalg.norm(
-            np.array([self.target_position.x_val, self.target_position.y_val, self.target_position.z_val]) - 
-            np.array([drone_state.x_val, drone_state.y_val, drone_state.z_val])
-        )
+    def distance_to_goal(self, drone_state):
+        drone_position = np.array([drone_state.x_val, drone_state.y_val, drone_state.z_val])
+        return np.linalg.norm(self.goal_position - drone_position)
 
     def distance_from_start(self, drone_state):
         return np.linalg.norm(
