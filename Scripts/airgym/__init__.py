@@ -7,3 +7,7 @@ register(
 register(
     id="airsim-v1", entry_point="airgym.envs:TestEnv",
 )
+
+register(
+    id="airsim-v2", entry_point="airgym.envs:PPOEnv",
+)
