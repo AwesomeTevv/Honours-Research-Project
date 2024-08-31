@@ -7,11 +7,23 @@ from wandb.integration.sb3 import WandbCallback
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecTransposeImage
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import BaseCallback,EvalCallback
 from stable_baselines3.common.vec_env import VecVideoRecorder
 
 # Initialize Weights & Biases
 wandb.init(project="airsim-drone-rl")
+
+# Custom callback for logging rewards
+class RewardLoggingCallback(BaseCallback):
+    def __init__(self, verbose=0):
+        super(RewardLoggingCallback, self).__init__(verbose)
+
+    def _on_step(self) -> bool:
+        # Check if the episode is done
+        if 'episode' in self.locals['infos'][0]:
+            episode_reward = self.locals['infos'][0]['episode']['r']
+            wandb.log({"episode_reward": episode_reward})
+        return True
 
 # Create a DummyVecEnv for main airsim gym env
 env = DummyVecEnv(
@@ -70,8 +82,10 @@ wandb_callback = WandbCallback(
     verbose=2,
 )
 
+w_cb_2 = RewardLoggingCallback()
+
 # Combine callbacks
-callbacks = [eval_callback, wandb_callback]
+callbacks = [eval_callback, wandb_callback, w_cb_2]
 
 # Train the model
 model.learn(
