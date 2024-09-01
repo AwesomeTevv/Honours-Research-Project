@@ -19,10 +19,10 @@ class PPOEnv(AirSimEnv):
         self.observation_space = spaces.Box(low=0, high=255, shape=(84, 84, 2), dtype=np.uint8)
 
         self.start_time = None
-        self.max_duration = 45  # time limit
-        self.max_distance = 15  # maximum distance
+        self.max_duration = 600  # time limit
+        self.max_distance = 100  # maximum distance
         
-        self.goal_position = np.array([5.0, 0.0, -5.0])  # Specified goal position
+        self.goal_position = np.array([21.7, -8.93, 1.63])  # Specified goal position
 
         self._setup_flight()
 
@@ -32,7 +32,7 @@ class PPOEnv(AirSimEnv):
         self.drone.armDisarm(True)
 
         # Set home position and velocity
-        self.drone.moveToPositionAsync(0, 0, -5, 5).join()
+        self.drone.moveToPositionAsync(0, 0, -1, 5).join()
         self.drone.moveByVelocityAsync(0, 0, 0, 1).join()
 
         self.start_position = self.drone.getMultirotorState().kinematics_estimated.position
@@ -170,3 +170,11 @@ class PPOEnv(AirSimEnv):
             return img_rgb
         else:
             return np.array([])
+    
+    def close(self):
+        if self.drone:
+            self.drone.enableApiControl(False)
+            self.drone.armDisarm(False)
+            self.drone.reset()
+        
+        super().close()

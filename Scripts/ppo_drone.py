@@ -7,23 +7,32 @@ from wandb.integration.sb3 import WandbCallback
 from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecTransposeImage
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.callbacks import BaseCallback,EvalCallback
+from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 from stable_baselines3.common.vec_env import VecVideoRecorder
+
+# Custom callback for logging episode rewards
+class WandbEpisodeLoggerCallback(BaseCallback):
+    def __init__(self, verbose=0):
+        super(WandbEpisodeLoggerCallback, self).__init__(verbose)
+        self.episode_count = 0
+        self.episode_reward = 0
+
+    def _on_step(self) -> bool:
+        # Accumulate reward
+        self.episode_reward += self.locals["rewards"][0]
+
+        # Check if episode has ended
+        done = self.locals["dones"][0]
+        if done:
+            self.episode_count += 1
+            # Log episode reward to wandb
+            wandb.log({"episode": self.episode_count, "episode_reward": self.episode_reward})
+            # Reset episode reward
+            self.episode_reward = 0
+        return True
 
 # Initialize Weights & Biases
 wandb.init(project="airsim-drone-rl")
-
-# Custom callback for logging rewards
-class RewardLoggingCallback(BaseCallback):
-    def __init__(self, verbose=0):
-        super(RewardLoggingCallback, self).__init__(verbose)
-
-    def _on_step(self) -> bool:
-        # Check if the episode is done
-        if 'episode' in self.locals['infos'][0]:
-            episode_reward = self.locals['infos'][0]['episode']['r']
-            wandb.log({"episode_reward": episode_reward})
-        return True
 
 # Create a DummyVecEnv for main airsim gym env
 env = DummyVecEnv(
@@ -51,7 +60,7 @@ model = PPO(
     env,
     verbose=1,
     tensorboard_log="./tb_logs/",
-    learning_rate=0.0003,
+    learning_rate=0.001,
     n_steps=2048,
     batch_size=64,
     n_epochs=10,
@@ -69,10 +78,10 @@ model = PPO(
 eval_callback = EvalCallback(
     env,
     callback_on_new_best=None,
-    n_eval_episodes=1,
+    n_eval_episodes=10,
     best_model_save_path="./best_model",
     log_path="./logs",
-    eval_freq=1,
+    eval_freq=10,
 )
 
 # Create a Weights and Biases callback
@@ -82,14 +91,15 @@ wandb_callback = WandbCallback(
     verbose=2,
 )
 
-w_cb_2 = RewardLoggingCallback()
+# Create our custom episode logger callback
+episode_logger_callback = WandbEpisodeLoggerCallback()
 
 # Combine callbacks
-callbacks = [eval_callback, wandb_callback, w_cb_2]
+callbacks = [eval_callback, wandb_callback, episode_logger_callback]
 
 # Train the model
 model.learn(
-    total_timesteps=1_000_000,
+    total_timesteps=1_000,
     callback=callbacks,
     tb_log_name="ppo_airsim_drone_run_" + str(time.time()),
 )
