@@ -22,7 +22,7 @@ class PPOEnv(AirSimEnv):
         self.max_duration = 600  # time limit
         self.max_distance = 100  # maximum distance
         
-        self.goal_position = np.array([21.7, -8.93, 1.63])  # Specified goal position
+        self.goal_position = np.array([21.7, -8.93, -1.63])  # Specified goal position
 
         self._setup_flight()
 
@@ -33,7 +33,7 @@ class PPOEnv(AirSimEnv):
 
         # Set home position and velocity
         self.drone.moveToPositionAsync(0, 0, -1, 5).join()
-        self.drone.moveByVelocityAsync(0, 0, 0, 1).join()
+        self.drone.moveByVelocityAsync(5, 0, 0, 1).join()
 
         self.start_position = self.drone.getMultirotorState().kinematics_estimated.position
         self.start_time = time.time()

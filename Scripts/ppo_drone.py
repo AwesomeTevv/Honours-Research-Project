@@ -60,7 +60,7 @@ model = PPO(
     env,
     verbose=1,
     tensorboard_log="./tb_logs/",
-    learning_rate=0.001,
+    learning_rate=0.01,
     n_steps=2048,
     batch_size=64,
     n_epochs=10,
