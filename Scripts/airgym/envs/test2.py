@@ -18,9 +18,8 @@ class PPOEnv(AirSimEnv):
         self.action_space = spaces.Box(low=-1, high=1, shape=(3,), dtype=np.float32)
         self.observation_space = spaces.Box(low=0, high=255, shape=(84, 84, 2), dtype=np.uint8)
 
-        self.start_time = None
-        self.max_duration = 600  # time limit
-        self.max_distance = 100  # maximum distance
+        self.max_timesteps = 600  # timestep limit
+        self.timestep_count = 0  # Timestep counter
         
         self.goal_position = np.array([21.7, -8.93, -1.63])  # Specified goal position
 
@@ -88,10 +87,8 @@ class PPOEnv(AirSimEnv):
         reward = 0
         done = False
         
-        # Collision penalty (less harsh, but still resets the episode)
         if collision_info.has_collided:
-            # reward = -50
-            reward = -50 * dist_to_goal
+            reward = -dist_to_goal
             print("I hit something...")
             done = True
         # Goal reached reward
@@ -99,38 +96,8 @@ class PPOEnv(AirSimEnv):
             reward = 100
             print("I did it!")
             done = True
-        # Out of bounds penalty
-        elif self.distance_from_start(drone_state) > self.max_distance:
-            reward = -50 * dist_to_goal
-            print("I strayed too far away.")
-            done = True
         else:
-            # Progress reward: Encourage getting closer to the goal
-            previous_dist_to_goal = self.prev_dist_to_goal if hasattr(self, 'prev_dist_to_goal') else dist_to_goal
-            progress = previous_dist_to_goal - dist_to_goal
-            
-            # Reward for making progress towards the goal
-            if progress > 0:
-                reward += 5 * progress  # Smaller reward but still encouraging progress
-            
-            # Time penalty: Less severe if closer to the goal
-            time_elapsed = time.time() - self.start_time
-            if time_elapsed > self.max_duration:
-                # Scaled penalty based on distance to goal
-                scaled_penalty = -2 * (dist_to_goal / self.max_distance)
-                reward += scaled_penalty
-                print("I took too long.")
-                done = True
-            else:
-                # Regular time penalty
-                reward -= 0.005  # Less harsh time penalty
-            
-            # Penalise inactivity: Ensure the drone keeps moving
-            if velocity.x_val**2 + velocity.y_val**2 + velocity.z_val**2 < 0.1**2:  # If speed is below a threshold
-                reward -= 0.5  # Reduced penalty for inactivity
-            
-            # Store the current distance for the next step
-            self.prev_dist_to_goal = dist_to_goal
+            reward = -dist_to_goal
         
         return reward, done
 
@@ -146,9 +113,16 @@ class PPOEnv(AirSimEnv):
         )
 
     def step(self, action):
+        self.timestep_count += 1
+
         self._do_action(action)
         obs = self._get_obs()
         reward, done = self._compute_reward()
+
+        if self.timestep_count >= self.max_timesteps:
+            print("I took too long...")
+            done = True
+
         info = {}
         return obs, reward, done, info
 
