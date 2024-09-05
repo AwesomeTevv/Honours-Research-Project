@@ -3,12 +3,8 @@ import airsim
 import numpy as np
 import math
 import time
-from argparse import ArgumentParser
-
-import gym
 from gym import spaces
 from airgym.envs.airsim_env import AirSimEnv
-
 
 class AirSimDroneEnv(AirSimEnv):
     def __init__(self, ip_address, step_length, image_shape):
@@ -16,22 +12,24 @@ class AirSimDroneEnv(AirSimEnv):
         self.step_length = step_length
         self.image_shape = image_shape
 
-        self.state = {
-            "position": np.zeros(3),
-            "collision": False,
-            "prev_position": np.zeros(3),
-        }
-
         self.drone = airsim.MultirotorClient(ip=ip_address)
-        self.action_space = spaces.Discrete(7)
+        self.drone.confirmConnection()
+
+        self.action_space = spaces.Box(low=-1, high=1, shape=(3,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=0, high=255, shape=(84, 84, 2), dtype=np.uint8)
+
+        self.max_timesteps = 600  # timestep limit
+        self.timestep_count = 0  # Timestep counter
+        
+        self.goal_position = np.array([21.7, -8.93, -1.63])  # Specified goal position
+
         self._setup_flight()
-
-        self.image_request = airsim.ImageRequest(
-            3, airsim.ImageType.DepthPerspective, True, False
-        )
-
+    
     def __del__(self):
-        self.drone.reset()
+        if self.drone:
+            self.drone.enableApiControl(False)
+            self.drone.armDisarm(False)
+            self.drone.reset()
 
     def _setup_flight(self):
         self.drone.reset()
@@ -39,34 +37,30 @@ class AirSimDroneEnv(AirSimEnv):
         self.drone.armDisarm(True)
 
         # Set home position and velocity
-        self.drone.moveToPositionAsync(-0.55265, -31.9786, -19.0225, 10).join()
-        self.drone.moveByVelocityAsync(1, -0.67, -0.8, 5).join()
+        self.drone.moveToPositionAsync(0, 0, -1, 5).join()
+        self.drone.moveByVelocityAsync(0, 0, 0, 1).join()
 
-    def transform_obs(self, responses):
-        img1d = np.array(responses[0].image_data_float, dtype=np.float)
-        img1d = 255 / np.maximum(np.ones(img1d.size), img1d)
-        img2d = np.reshape(img1d, (responses[0].height, responses[0].width))
-
-        from PIL import Image
-
-        image = Image.fromarray(img2d)
-        im_final = np.array(image.resize((84, 84)).convert("L"))
-
-        return im_final.reshape([84, 84, 1])
+        self.start_position = self.drone.getMultirotorState().kinematics_estimated.position
+        self.start_time = time.time()
 
     def _get_obs(self):
-        responses = self.drone.simGetImages([self.image_request])
-        image = self.transform_obs(responses)
-        self.drone_state = self.drone.getMultirotorState()
-
-        self.state["prev_position"] = self.state["position"]
-        self.state["position"] = self.drone_state.kinematics_estimated.position
-        self.state["velocity"] = self.drone_state.kinematics_estimated.linear_velocity
-
-        collision = self.drone.simGetCollisionInfo().has_collided
-        self.state["collision"] = collision
-
-        return image
+        responses = self.drone.simGetImages([airsim.ImageRequest("0", airsim.ImageType.DepthPerspective, True, False)])
+        depth_img = self.transform_obs(responses)
+        
+        lidar_data = self.drone.getLidarData()
+        lidar_points = np.array(lidar_data.point_cloud, dtype=np.dtype('f4'))
+        lidar_points = np.reshape(lidar_points, (int(lidar_points.shape[0]/3), 3))
+        
+        # Simplify LiDAR data to a 2D grid
+        lidar_2d = np.zeros((84, 84))
+        for point in lidar_points:
+            x, y = int((point[0] + 10) * 4.2), int((point[1] + 10) * 4.2)
+            if 0 <= x < 84 and 0 <= y < 84:
+                lidar_2d[x, y] = 255  # Set to 255 for visibility
+        
+        # Combine depth image and LiDAR data
+        obs = np.dstack((depth_img.squeeze(), lidar_2d))
+        return obs.astype(np.uint8)
 
     def _do_action(self, action):
         quad_offset = self.interpret_action(action)
@@ -75,90 +69,95 @@ class AirSimDroneEnv(AirSimEnv):
             quad_vel.x_val + quad_offset[0],
             quad_vel.y_val + quad_offset[1],
             quad_vel.z_val + quad_offset[2],
-            5,
+            5
         ).join()
 
     def _compute_reward(self):
-        thresh_dist = 7
-        beta = 1
-
-        z = -10
-        pts = [
-            np.array([-0.55265, -31.9786, -19.0225]),
-            np.array([48.59735, -63.3286, -60.07256]),
-            np.array([193.5974, -55.0786, -46.32256]),
-            np.array([369.2474, 35.32137, -62.5725]),
-            np.array([541.3474, 143.6714, -32.07256]),
-        ]
-
-        quad_pt = np.array(
-            list(
-                (
-                    self.state["position"].x_val,
-                    self.state["position"].y_val,
-                    self.state["position"].z_val,
-                )
-            )
-        )
-
-        if self.state["collision"]:
-            reward = -100
+        # Get the current drone position
+        drone_state = self.drone.getMultirotorState().kinematics_estimated.position
+        dist_to_goal = self.distance_to_goal(drone_state)
+        
+        # Get collision info
+        collision_info = self.drone.simGetCollisionInfo()
+        
+        # Get velocity to check if the drone is moving
+        velocity = self.drone.getMultirotorState().kinematics_estimated.linear_velocity
+        
+        # Initialize reward and done flag
+        reward = 0
+        done = False
+        
+        if collision_info.has_collided:
+            reward = -dist_to_goal
+            print("I hit something...")
+            done = True
+        # Goal reached reward
+        elif dist_to_goal < 1:  # If within 1 meter of the goal
+            reward = 100
+            print("I did it!")
+            done = True
         else:
-            dist = 10000000
-            for i in range(0, len(pts) - 1):
-                dist = min(
-                    dist,
-                    np.linalg.norm(np.cross((quad_pt - pts[i]), (quad_pt - pts[i + 1])))
-                    / np.linalg.norm(pts[i] - pts[i + 1]),
-                )
-
-            if dist > thresh_dist:
-                reward = -10
-            else:
-                reward_dist = math.exp(-beta * dist) - 0.5
-                reward_speed = (
-                    np.linalg.norm(
-                        [
-                            self.state["velocity"].x_val,
-                            self.state["velocity"].y_val,
-                            self.state["velocity"].z_val,
-                        ]
-                    )
-                    - 0.5
-                )
-                reward = reward_dist + reward_speed
-
-        done = 0
-        if reward <= -10:
-            done = 1
-
+            reward = -dist_to_goal
+        
         return reward, done
 
+
+    def distance_to_goal(self, drone_state):
+        drone_position = np.array([drone_state.x_val, drone_state.y_val, drone_state.z_val])
+        return np.linalg.norm(self.goal_position - drone_position)
+
+    def distance_from_start(self, drone_state):
+        return np.linalg.norm(
+            np.array([self.start_position.x_val, self.start_position.y_val, self.start_position.z_val]) - 
+            np.array([drone_state.x_val, drone_state.y_val, drone_state.z_val])
+        )
+
     def step(self, action):
+        self.timestep_count += 1
+
         self._do_action(action)
         obs = self._get_obs()
         reward, done = self._compute_reward()
 
-        return obs, reward, done, self.state
+        if self.timestep_count >= self.max_timesteps:
+            print("I took too long...")
+            done = True
+
+        info = {}
+        return obs, reward, done, info
 
     def reset(self):
         self._setup_flight()
+        print("Reset!")
         return self._get_obs()
 
     def interpret_action(self, action):
-        if action == 0:
-            quad_offset = (self.step_length, 0, 0)
-        elif action == 1:
-            quad_offset = (0, self.step_length, 0)
-        elif action == 2:
-            quad_offset = (0, 0, self.step_length)
-        elif action == 3:
-            quad_offset = (-self.step_length, 0, 0)
-        elif action == 4:
-            quad_offset = (0, -self.step_length, 0)
-        elif action == 5:
-            quad_offset = (0, 0, -self.step_length)
-        else:
-            quad_offset = (0, 0, 0)
+        scaled_action = np.clip(action, -1, 1) * self.step_length
+        return scaled_action
 
-        return quad_offset
+    def transform_obs(self, responses):
+        img1d = np.array(responses[0].image_data_float, dtype=np.float)
+        img1d = 255 / np.maximum(np.ones(img1d.size), img1d)
+        img2d = np.reshape(img1d, (responses[0].height, responses[0].width))
+
+        from PIL import Image
+        image = Image.fromarray(img2d)
+        im_final = np.array(image.resize((84, 84)).convert("L"))
+
+        return im_final.reshape([84, 84, 1])
+    
+    def render(self, mode='rgb_array'):
+        if mode == 'rgb_array':
+            responses = self.drone.simGetImages([airsim.ImageRequest("0", airsim.ImageType.Scene, False, False)])
+            response = responses[0]
+            img1d = np.fromstring(response.image_data_uint8, dtype=np.uint8)
+            img_rgb = img1d.reshape(response.height, response.width, 3)
+            return img_rgb
+        else:
+            return np.array([])
+    
+    def close(self):
+        if self.drone:
+            self.drone.enableApiControl(False)
+            self.drone.armDisarm(False)
+            self.drone.reset()

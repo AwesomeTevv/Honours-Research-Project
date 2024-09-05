@@ -16,39 +16,19 @@ class WandbEpisodeLoggerCallback(BaseCallback):
     def __init__(self, verbose=0):
         super(WandbEpisodeLoggerCallback, self).__init__(verbose)
         self.episode_reward = 0
-        self.episode_length = 0
 
     def _on_step(self) -> bool:
-        # Increment episode length and accumulate reward
-        self.episode_reward += self.locals['rewards'][0]
-        self.episode_length += 1
+        # Accumulate reward
+        self.episode_reward += self.locals["rewards"][0]
+
+        # Check if episode has ended
+        done = self.locals["dones"][0]
+        if done:
+            # Log episode reward to wandb
+            wandb.log({"episode_reward": self.episode_reward})
+            # Reset episode reward
+            self.episode_reward = 0
         return True
-
-    def _on_episode_end(self) -> None:
-        # Log directly to W&B if accessible
-        try:
-            drone_position = self.training_env.envs[0].drone.getMultirotorState().kinematics_estimated.position
-            distance_to_goal = np.linalg.norm(np.array([21.7, -8.93, -1.63]) - np.array([drone_position.x_val, drone_position.y_val, drone_position.z_val]))
-            
-            # Log metrics to Weights & Biases
-            wandb.log({
-                "episode_reward": self.episode_reward,
-                "episode_length": self.episode_length,
-                "distance_to_goal": distance_to_goal
-            })
-        except Exception as e:
-            print(f"Failed to log to W&B: {e}")
-
-        # Reset episode metrics
-        self.episode_reward = 0
-        self.episode_length = 0
-
-    def _on_training_end(self) -> None:
-        # Final log at the end of training
-        wandb.log({
-            "final_episode_reward": self.episode_reward,
-            "final_episode_length": self.episode_length,
-        })
 
 # Initialise Weights & Biases
 wandb.init(project="airsim-drone-rl", sync_tensorboard=True)
@@ -59,7 +39,7 @@ env = DummyVecEnv(
     [
         lambda: Monitor(
             gym.make(
-                "airgym:airsim-v2",
+                "airgym:airsim-drone-v2",
                 ip_address="127.0.0.1",
                 step_length=0.25,
                 image_shape=(84, 84, 2),
