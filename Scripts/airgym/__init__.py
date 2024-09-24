@@ -1,5 +1,9 @@
 from gym.envs.registration import register
 
 register(
-    id="airsim-drone-v2", entry_point="airgym.envs:AirSimDroneEnv",
+    id="airsim-drone-cont-v1", entry_point="airgym.envs:ContAirSimDroneEnv",
+)
+
+register(
+    id="airsim-drone-disc-v1", entry_point="airgym.envs:DiscAirSimDroneEnv",
 )

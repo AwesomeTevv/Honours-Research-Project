@@ -5,7 +5,7 @@ import time
 import wandb
 from wandb.integration.sb3 import WandbCallback
 
-from stable_baselines3 import PPO
+from stable_baselines3 import PPO, SAC
 from stable_baselines3.common.vec_env import DummyVecEnv, VecTransposeImage
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
@@ -60,10 +60,10 @@ model = PPO(
     env,
     verbose=1,
     tensorboard_log="./tb_logs/",
-    learning_rate=0.00001,
-    n_steps=2048,
-    batch_size=64,
-    n_epochs=1,
+    learning_rate=0.0003,
+    n_steps=1024,
+    batch_size=256,
+    n_epochs=10,
     gamma=0.99,
     gae_lambda=0.95,
     clip_range=0.2,
@@ -74,12 +74,24 @@ model = PPO(
     ),
 )
 
+# model = SAC(
+#     "MlpPolicy",  # SAC uses MlpPolicy for continuous actions
+#     env,
+#     verbose=1,
+#     tensorboard_log="./tb_logs/",
+#     learning_rate=0.0003,
+#     batch_size=256,
+#     gamma=0.99,
+#     tau=0.005,  # Soft update coefficient
+#     ent_coef="auto",  # Automatic entropy tuning
+# )
+
 # Create an evaluation callback
 eval_callback = EvalCallback(
     env,
     callback_on_new_best=None,
     n_eval_episodes=10,
-    best_model_save_path="./best_model",
+    best_model_save_path="./ppo_best_model",
     log_path="./logs",
     eval_freq=10,
 )
@@ -99,7 +111,7 @@ callbacks = [eval_callback, wandb_callback, episode_logger_callback]
 
 # Train the model
 model.learn(
-    total_timesteps=10_000,
+    total_timesteps=500_000,
     callback=callbacks,
     tb_log_name="ppo_airsim_drone_run_" + str(time.time()),
 )

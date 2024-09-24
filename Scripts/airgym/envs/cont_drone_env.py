@@ -6,7 +6,7 @@ import time
 from gym import spaces
 from airgym.envs.airsim_env import AirSimEnv
 
-class AirSimDroneEnv(AirSimEnv):
+class ContAirSimDroneEnv(AirSimEnv):
     def __init__(self, ip_address, step_length, image_shape):
         super().__init__(image_shape)
         self.step_length = step_length
@@ -77,24 +77,21 @@ class AirSimDroneEnv(AirSimEnv):
         drone_state = self.drone.getMultirotorState().kinematics_estimated.position
         dist_to_goal = self.distance_to_goal(drone_state)
         
-        # Get collision info
         collision_info = self.drone.simGetCollisionInfo()
         
-        # Get velocity to check if the drone is moving
         velocity = self.drone.getMultirotorState().kinematics_estimated.linear_velocity
         
-        # Initialize reward and done flag
         reward = 0
         done = False
         
         if collision_info.has_collided:
             reward = -dist_to_goal
-            print("I hit something...")
+            print("I hit something...", end="")
             done = True
         # Goal reached reward
         elif dist_to_goal < 1:  # If within 1 meter of the goal
             reward = 100
-            print("I did it!")
+            print("I did it!",end=" ")
             done = True
         else:
             reward = -dist_to_goal
@@ -118,10 +115,6 @@ class AirSimDroneEnv(AirSimEnv):
         self._do_action(action)
         obs = self._get_obs()
         reward, done = self._compute_reward()
-
-        if self.timestep_count >= self.max_timesteps:
-            print("I took too long...")
-            done = True
 
         info = {}
         return obs, reward, done, info
