@@ -18,19 +18,16 @@ class WandbEpisodeLoggerCallback(BaseCallback):
         self.episode_reward = 0
 
     def _on_step(self) -> bool:
-        # Accumulate reward
         self.episode_reward += self.locals["rewards"][0]
 
-        # Check if episode has ended
         done = self.locals["dones"][0]
         if done:
-            # Log episode reward to wandb
             wandb.log({"episode_reward": self.episode_reward})
-            # Reset episode reward
             self.episode_reward = 0
+
         return True
 
-# Initialise Weights & Biases
+# Initialising Weights & Biases
 wandb.init(project="airsim-drone-rl", sync_tensorboard=True)
 wandb.log({"init_message": "Training started"})
 
@@ -51,15 +48,12 @@ env = DummyVecEnv(
 # Wrap env as VecTransposeImage to allow SB to handle frame observations
 env = VecTransposeImage(env)
 
-# # Add video recorder
-# env = VecVideoRecorder(env, "videos", record_video_trigger=lambda x: x % 10000 == 0, video_length=200)
-
-# Initialize PPO model
+# Initialise PPO model
 model = PPO(
     "CnnPolicy",
     env,
     verbose=1,
-    tensorboard_log="./tb_logs/",
+    tensorboard_log="../Logs/tb_logs/PPO/",
     learning_rate=0.0003,
     n_steps=1024,
     batch_size=256,
@@ -74,32 +68,20 @@ model = PPO(
     ),
 )
 
-# model = SAC(
-#     "MlpPolicy",  # SAC uses MlpPolicy for continuous actions
-#     env,
-#     verbose=1,
-#     tensorboard_log="./tb_logs/",
-#     learning_rate=0.0003,
-#     batch_size=256,
-#     gamma=0.99,
-#     tau=0.005,  # Soft update coefficient
-#     ent_coef="auto",  # Automatic entropy tuning
-# )
-
 # Create an evaluation callback
 eval_callback = EvalCallback(
     env,
     callback_on_new_best=None,
     n_eval_episodes=10,
-    best_model_save_path="./ppo_best_model",
-    log_path="./logs",
+    best_model_save_path=f"../Models/ppo_best_model_{int(time.time())}",
+    log_path="./Logs/PPO",
     eval_freq=10,
 )
 
 # Create a Weights and Biases callback
 wandb_callback = WandbCallback(
     gradient_save_freq=100,
-    model_save_path=f"models/{int(time.time())}",
+    model_save_path=f"../Models/PPO_WB{int(time.time())}",
     verbose=2,
 )
 
