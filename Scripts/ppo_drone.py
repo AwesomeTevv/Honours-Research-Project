@@ -36,10 +36,10 @@ env = DummyVecEnv(
     [
         lambda: Monitor(
             gym.make(
-                "airgym:airsim-drone-v2",
+                "airgym:airsim-drone-cont-v1",
                 ip_address="127.0.0.1",
                 step_length=0.25,
-                image_shape=(84, 84, 2),
+                image_shape=(512, 512, 2),
             )
         )
     ]
@@ -74,7 +74,7 @@ eval_callback = EvalCallback(
     callback_on_new_best=None,
     n_eval_episodes=10,
     best_model_save_path=f"../Models/ppo_best_model_{int(time.time())}",
-    log_path="./Logs/PPO",
+    log_path="../Logs/PPO",
     eval_freq=10,
 )
 

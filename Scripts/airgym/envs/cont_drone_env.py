@@ -16,7 +16,7 @@ class ContAirSimDroneEnv(AirSimEnv):
         self.drone.confirmConnection()
 
         self.action_space = spaces.Box(low=-1, high=1, shape=(3,), dtype=np.float32)
-        self.observation_space = spaces.Box(low=0, high=255, shape=(84, 84, 2), dtype=np.uint8)
+        self.observation_space = spaces.Box(low=0, high=255, shape=image_shape, dtype=np.uint8)
 
         self.max_timesteps = 600  # timestep limit
         self.timestep_count = 0  # Timestep counter
