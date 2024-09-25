@@ -6,10 +6,9 @@ import wandb
 from wandb.integration.sb3 import WandbCallback
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 
 class CustomCallback(BaseCallback):
     def __init__(self, verbose: int = 0):
@@ -40,7 +39,7 @@ class CustomCallback(BaseCallback):
                 "Average Acceleration": acceleration,
                 "Distance to Goal": self.locals["infos"][-1]["distance_to_goal"],
                 "Angle to Goal": self.locals["infos"][-1]["angle_to_goal"],
-                "Depth Image": wandb.Image(depth_image, caption="Depth Image")
+                # "Depth Image": wandb.Image(depth_image, caption="Depth Image")
             })
         
         return True
@@ -71,10 +70,19 @@ model = PPO(
     device="cuda",
 )
 
+# eval_callback = EvalCallback(
+#     env,
+#     callback_on_new_best=None,
+#     n_eval_episodes=10,
+#     best_model_save_path=f"../Models/PPO/SB/ppo_best_model_{int(time.time())}",
+#     log_path="../Logs/PPO/SB/",
+#     eval_freq=10,
+# )
+
 # Create a Weights and Biases callback
 wandb_callback = WandbCallback(
     gradient_save_freq=10,
-    model_save_path=f"../Models/PPO/{int(time.time())}",
+    model_save_path=f"../Models/PPO/WandB/{int(time.time())}",
     verbose=2,
 )
 

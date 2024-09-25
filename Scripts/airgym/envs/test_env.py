@@ -84,55 +84,47 @@ class TestEnv(AirSimEnv):
 
         return obs
     
-    def _do_action(self, action):
-        quad_offset = self.interpret_action(action)
-        quad_vel = self.drone.getMultirotorState().kinematics_estimated.linear_velocity
-        self.drone.moveByVelocityAsync(
-            quad_vel.x_val + quad_offset[0],
-            quad_vel.y_val + quad_offset[1],
-            quad_vel.z_val + quad_offset[2],
-            5,
-        ).join()
-    
     def _compute_reward(self):
         state = self.drone.getMultirotorState().kinematics_estimated
 
         position = self._get_position(state)
         distance_to_goal = self._get_distance_to_goal(position)
 
-        velocity = self._get_velocity(state)
+        # velocity = self._get_velocity(state)
 
-        # Get vector from drone to goal
-        direction_to_goal = self.goal - position
-        direction_to_goal_norm = direction_to_goal / np.linalg.norm(direction_to_goal)
+        # # Get vector from drone to goal
+        # direction_to_goal = self.goal - position
+        # direction_to_goal_norm = direction_to_goal / np.linalg.norm(direction_to_goal)
         
         # Penalize movement away from goal
-        direction_dot_product = np.dot(velocity, direction_to_goal_norm)
+        # direction_dot_product = np.dot(velocity, direction_to_goal_norm)
 
         done = False
-        # reward = -500.0
+        reward = -500.0
 
-        # if distance_to_goal < 1.0:
-        #     reward = 100.0
-        #     done = True
-        # else:
-        #     reward = -distance_to_goal
-        #     done = False
-        
-        # if self._check_collision():
-        #     reward -= 100
-        #     done = True
-
-            # Reward for moving towards the goal
-        reward = direction_dot_product  # Positive if moving towards the goal
-        
-        # Add additional rewards and penalties (e.g., collision, proximity to goal)
         if distance_to_goal < 1.0:
-            reward += 100  # Big reward for reaching the goal
+            reward = 100.0
+            print("I made it!")
             done = True
+        else:
+            reward = -distance_to_goal
+            done = False
+        
         if self._check_collision():
-            reward -= 10  # Penalty for collision
+            reward -= 100
+            print("I hit something...")
             done = True
+
+        # Reward for moving towards the goal
+        # reward = direction_dot_product  # Positive if moving towards the goal
+        
+        # # Add additional rewards and penalties (e.g., collision, proximity to goal)
+        # if distance_to_goal < 1.0:
+        #     reward += 100  # Big reward for reaching the goal
+        #     done = True
+        # if self._check_collision():
+        #     reward -= 10  # Penalty for collision
+        #     done = True
         
         return reward, done
 
@@ -161,24 +153,6 @@ class TestEnv(AirSimEnv):
         }
 
         return obs, reward, done, info
-    
-    def interpret_action(self, action):
-        if action == 0:
-            quad_offset = (self.step_length, 0, 0)
-        elif action == 1:
-            quad_offset = (0, self.step_length, 0)
-        elif action == 2:
-            quad_offset = (0, 0, self.step_length)
-        elif action == 3:
-            quad_offset = (-self.step_length, 0, 0)
-        elif action == 4:
-            quad_offset = (0, -self.step_length, 0)
-        elif action == 5:
-            quad_offset = (0, 0, -self.step_length)
-        else:
-            quad_offset = (0, 0, 0)
-
-        return quad_offset
     
     def render(self, mode='rgb_array'):
         if mode == 'rgb_array':
