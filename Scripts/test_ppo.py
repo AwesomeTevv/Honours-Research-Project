@@ -15,26 +15,22 @@ class CustomCallback(BaseCallback):
         super(CustomCallback, self).__init__(verbose)
 
         self.rewards = []
-        self.lengths = []
         self.velocities = []
         self.accelerations = []
     
     def _on_step(self) -> bool:
         if self.locals["dones"][0]:
             reward = np.sum(self.locals["rewards"])
-            length = len(self.locals["rewards"])
             velocity = np.mean([info["velocity"] for info in self.locals["infos"]])
             acceleration = np.mean([info["acceleration"] for info in self.locals["infos"]])
-            depth_image = self.locals["infos"][-1]["depth_image"]
+            # depth_image = self.locals["infos"][-1]["depth_image"]
 
             self.rewards.append(reward)
-            self.lengths.append(length)
             self.velocities.append(velocity)
             self.accelerations.append(acceleration)
 
             wandb.log({
                 "Episode Reward": reward,
-                "Episode Length": length,
                 "Average Velocity": velocity,
                 "Average Acceleration": acceleration,
                 "Distance to Goal": self.locals["infos"][-1]["distance_to_goal"],

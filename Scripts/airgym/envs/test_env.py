@@ -12,6 +12,9 @@ class TestEnv(AirSimEnv):
         self.step_length = step_length
         self.image_shape = image_shape
 
+        self.max_timesteps = 1000
+        self.current_timestep = 0
+
         self.observation_space = spaces.Dict({
             'depth_image': spaces.Box(low=0, high=255, shape=(84, 84, 1), dtype=np.uint8),
             'distance_to_goal': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
@@ -104,7 +107,11 @@ class TestEnv(AirSimEnv):
 
         if distance_to_goal < 1.0:
             reward = 100.0
-            print("I made it!")
+            print(f"Drone: I made it! [{self.current_timestep}]", end=" ")
+            done = True
+        elif self.current_timestep >= self.max_timesteps:
+            reward = -distance_to_goal
+            print(f"Drone: I took too long... [{self.current_timestep}]", end=" ")
             done = True
         else:
             reward = -distance_to_goal
@@ -112,7 +119,7 @@ class TestEnv(AirSimEnv):
         
         if self._check_collision():
             reward -= 100
-            print("I hit something...")
+            print(f"Drone: I hit something... [{self.current_timestep}]", end=" ")
             done = True
 
         # Reward for moving towards the goal
@@ -130,19 +137,23 @@ class TestEnv(AirSimEnv):
 
     def reset(self):
         self._setup_flight()
+        self.current_timestep = 0
         return self._get_obs()
     
     def close(self):
         self.__del__()
     
     def step(self, action):
-        # self._do_action(action)
+        self.current_timestep += 1
+
         vx, vy, vz = float(action[0]), float(action[1]), float(action[2])
         self.drone.moveByVelocityAsync(vx, vy, vz, duration=1).join()
 
         obs = self._get_obs()
 
         reward, done = self._compute_reward()
+        if done:
+            print(f"[{reward}]")
 
         info = {
             "velocity": obs["velocity"],
