@@ -12,7 +12,7 @@ class TestEnv(AirSimEnv):
         self.step_length = step_length
         self.image_shape = image_shape
 
-        self.max_timesteps = 1000
+        self.max_timesteps = 200
         self.current_timestep = 0
 
         self.observation_space = spaces.Dict({
