@@ -93,45 +93,33 @@ class TestEnv(AirSimEnv):
         position = self._get_position(state)
         distance_to_goal = self._get_distance_to_goal(position)
 
-        # velocity = self._get_velocity(state)
+        velocity = self._get_velocity(state)
 
-        # # Get vector from drone to goal
-        # direction_to_goal = self.goal - position
-        # direction_to_goal_norm = direction_to_goal / np.linalg.norm(direction_to_goal)
+        # Get vector from drone to goal
+        direction_to_goal = self.goal - position
+        direction_to_goal_norm = direction_to_goal / np.linalg.norm(direction_to_goal)
         
-        # Penalize movement away from goal
-        # direction_dot_product = np.dot(velocity, direction_to_goal_norm)
+        # Penalise movement away from goal
+        direction_dot_product = np.dot(velocity, direction_to_goal_norm)
 
         done = False
-        reward = -500.0
 
+        # Reward for moving towards the goal
+        reward = direction_dot_product  # Positive if moving towards the goal
+        
+        # Add additional rewards and penalties
         if distance_to_goal < 1.0:
-            reward = 100.0
+            reward += 10  # Big reward for reaching the goal
             print(f"Drone: I made it! [{self.current_timestep}]", end=" ")
             done = True
         elif self.current_timestep >= self.max_timesteps:
-            reward = -distance_to_goal
             print(f"Drone: I took too long... [{self.current_timestep}]", end=" ")
             done = True
-        else:
-            reward = -distance_to_goal
-            done = False
         
         if self._check_collision():
-            reward -= 100
+            reward -= 10  # Penalty for collision
             print(f"Drone: I hit something... [{self.current_timestep}]", end=" ")
             done = True
-
-        # Reward for moving towards the goal
-        # reward = direction_dot_product  # Positive if moving towards the goal
-        
-        # # Add additional rewards and penalties (e.g., collision, proximity to goal)
-        # if distance_to_goal < 1.0:
-        #     reward += 100  # Big reward for reaching the goal
-        #     done = True
-        # if self._check_collision():
-        #     reward -= 10  # Penalty for collision
-        #     done = True
         
         return reward, done
 
