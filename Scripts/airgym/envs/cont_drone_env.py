@@ -6,31 +6,40 @@ import time
 from gym import spaces
 from airgym.envs.airsim_env import AirSimEnv
 
-class ContAirSimDroneEnv(AirSimEnv):
+class ContDroneEnv(AirSimEnv):
     def __init__(self, ip_address, step_length, image_shape):
         super().__init__(image_shape)
         self.step_length = step_length
         self.image_shape = image_shape
 
+        self.max_timesteps = 200
+        self.current_timestep = 0
+
+        self.observation_space = spaces.Dict({
+            'depth_image': spaces.Box(low=0, high=255, shape=(84, 84, 1), dtype=np.uint8),
+            'distance_to_goal': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            'angle_to_goal': spaces.Box(low=-np.pi, high=np.pi, shape=(1,), dtype=np.float32),
+            'velocity': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
+            'acceleration': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)
+        })
+        self.action_space = spaces.Box(low=np.array([-1, -1, -1]), high=np.array([1, 1, 1]), shape=(3,), dtype=np.float32)
+
         self.drone = airsim.MultirotorClient(ip=ip_address)
         self.drone.confirmConnection()
+        self.drone.enableApiControl(True)
+        self.drone.armDisarm(True)
 
-        self.action_space = spaces.Box(low=-1, high=1, shape=(3,), dtype=np.float32)
-        self.observation_space = spaces.Box(low=0, high=255, shape=image_shape, dtype=np.uint8)
+        self.goal = np.array([21.7, -8.93, -1.63])
 
-        self.max_timesteps = 600  # timestep limit
-        self.timestep_count = 0  # Timestep counter
-        
-        self.goal_position = np.array([21.7, -8.93, -1.63])  # Specified goal position
+        self.image_request = airsim.ImageRequest(
+            0, airsim.ImageType.DepthPerspective, True, False
+        )
 
         self._setup_flight()
-    
-    def __del__(self):
-        if self.drone:
-            self.drone.enableApiControl(False)
-            self.drone.armDisarm(False)
-            self.drone.reset()
 
+    def __del__(self):
+        self.drone.reset()
+    
     def _setup_flight(self):
         self.drone.reset()
         self.drone.enableApiControl(True)
@@ -39,105 +48,110 @@ class ContAirSimDroneEnv(AirSimEnv):
         # Set home position and velocity
         self.drone.moveToPositionAsync(0, 0, -1, 5).join()
         self.drone.moveByVelocityAsync(0, 0, 0, 1).join()
+    
+    def _transform_obs(self, responses):
+        response = responses[0]
 
-        self.start_position = self.drone.getMultirotorState().kinematics_estimated.position
-        self.start_time = time.time()
-
-    def _get_obs(self):
-        responses = self.drone.simGetImages([airsim.ImageRequest("0", airsim.ImageType.DepthPerspective, True, False)])
-        depth_img = self.transform_obs(responses)
-        
-        lidar_data = self.drone.getLidarData()
-        lidar_points = np.array(lidar_data.point_cloud, dtype=np.dtype('f4'))
-        lidar_points = np.reshape(lidar_points, (int(lidar_points.shape[0]/3), 3))
-        
-        # Simplify LiDAR data to a 2D grid
-        lidar_2d = np.zeros((84, 84))
-        for point in lidar_points:
-            x, y = int((point[0] + 10) * 4.2), int((point[1] + 10) * 4.2)
-            if 0 <= x < 84 and 0 <= y < 84:
-                lidar_2d[x, y] = 255  # Set to 255 for visibility
-        
-        # Combine depth image and LiDAR data
-        obs = np.dstack((depth_img.squeeze(), lidar_2d))
-        return obs.astype(np.uint8)
-
-    def _do_action(self, action):
-        quad_offset = self.interpret_action(action)
-        quad_vel = self.drone.getMultirotorState().kinematics_estimated.linear_velocity
-        self.drone.moveByVelocityAsync(
-            quad_vel.x_val + quad_offset[0],
-            quad_vel.y_val + quad_offset[1],
-            quad_vel.z_val + quad_offset[2],
-            5
-        ).join()
-
-    def _compute_reward(self):
-        # Get the current drone position
-        drone_state = self.drone.getMultirotorState().kinematics_estimated.position
-        dist_to_goal = self.distance_to_goal(drone_state)
-        
-        collision_info = self.drone.simGetCollisionInfo()
-        
-        velocity = self.drone.getMultirotorState().kinematics_estimated.linear_velocity
-        
-        reward = 0
-        done = False
-        
-        if collision_info.has_collided:
-            reward = -dist_to_goal
-            print("I hit something...", end="")
-            done = True
-        # Goal reached reward
-        elif dist_to_goal < 1:  # If within 1 meter of the goal
-            reward = 100
-            print("I did it!",end=" ")
-            done = True
-        else:
-            reward = -dist_to_goal
-        
-        return reward, done
-
-
-    def distance_to_goal(self, drone_state):
-        drone_position = np.array([drone_state.x_val, drone_state.y_val, drone_state.z_val])
-        return np.linalg.norm(self.goal_position - drone_position)
-
-    def distance_from_start(self, drone_state):
-        return np.linalg.norm(
-            np.array([self.start_position.x_val, self.start_position.y_val, self.start_position.z_val]) - 
-            np.array([drone_state.x_val, drone_state.y_val, drone_state.z_val])
-        )
-
-    def step(self, action):
-        self.timestep_count += 1
-
-        self._do_action(action)
-        obs = self._get_obs()
-        reward, done = self._compute_reward()
-
-        info = {}
-        return obs, reward, done, info
-
-    def reset(self):
-        self._setup_flight()
-        print("Reset!")
-        return self._get_obs()
-
-    def interpret_action(self, action):
-        scaled_action = np.clip(action, -1, 1) * self.step_length
-        return scaled_action
-
-    def transform_obs(self, responses):
-        img1d = np.array(responses[0].image_data_float, dtype=np.float)
+        img1d = np.array(response.image_data_float, dtype=np.float32)
         img1d = 255 / np.maximum(np.ones(img1d.size), img1d)
-        img2d = np.reshape(img1d, (responses[0].height, responses[0].width))
+        img2d = np.reshape(img1d, (response.height, response.width))
 
         from PIL import Image
+
         image = Image.fromarray(img2d)
         im_final = np.array(image.resize((84, 84)).convert("L"))
 
         return im_final.reshape([84, 84, 1])
+    
+    def _get_obs(self):
+        responses = self.drone.simGetImages([self.image_request])
+        
+        depth_image = self._transform_obs(responses)
+
+        state = self.drone.getMultirotorState().kinematics_estimated
+
+        position = self._get_position(state)
+        velocity = self._get_velocity(state)
+        acceleration = self._get_acceleration(state)
+
+        distance_to_goal = self._get_distance_to_goal(position)
+        angle_to_goal = self._get_angle_to_goal(state)
+
+        obs = {
+            'depth_image': depth_image,
+            'distance_to_goal': distance_to_goal,
+            'angle_to_goal': angle_to_goal,
+            'velocity': velocity,
+            'acceleration': acceleration,
+        }
+
+        return obs
+    
+    def _compute_reward(self):
+        state = self.drone.getMultirotorState().kinematics_estimated
+
+        position = self._get_position(state)
+        distance_to_goal = self._get_distance_to_goal(position)
+
+        velocity = self._get_velocity(state)
+
+        # Get vector from drone to goal
+        direction_to_goal = self.goal - position
+        direction_to_goal_norm = direction_to_goal / np.linalg.norm(direction_to_goal)
+        
+        # Penalise movement away from goal
+        direction_dot_product = np.dot(velocity, direction_to_goal_norm)
+
+        done = False
+
+        # Reward for moving towards the goal
+        reward = direction_dot_product  # Positive if moving towards the goal
+        
+        # Add additional rewards and penalties
+        if distance_to_goal < 1.0:
+            reward += 10  # Big reward for reaching the goal
+            print(f"Drone: I made it! [{self.current_timestep}]", end=" ")
+            done = True
+        elif self.current_timestep >= self.max_timesteps:
+            print(f"Drone: I took too long... [{self.current_timestep}]", end=" ")
+            done = True
+        
+        if self._check_collision():
+            reward -= 10  # Penalty for collision
+            print(f"Drone: I hit something... [{self.current_timestep}]", end=" ")
+            done = True
+        
+        return reward, done
+
+    def reset(self):
+        self._setup_flight()
+        self.current_timestep = 0
+        return self._get_obs()
+    
+    def close(self):
+        self.__del__()
+    
+    def step(self, action):
+        self.current_timestep += 1
+
+        vx, vy, vz = float(action[0]), float(action[1]), float(action[2])
+        self.drone.moveByVelocityAsync(vx, vy, vz, duration=1).join()
+
+        obs = self._get_obs()
+
+        reward, done = self._compute_reward()
+        if done:
+            print(f"[{reward}]")
+
+        info = {
+            "velocity": obs["velocity"],
+            "acceleration": obs["acceleration"],
+            "distance_to_goal": obs["distance_to_goal"],
+            "angle_to_goal": obs["angle_to_goal"],
+            "depth_image": obs["depth_image"]
+        }
+
+        return obs, reward, done, info
     
     def render(self, mode='rgb_array'):
         if mode == 'rgb_array':
@@ -148,9 +162,23 @@ class ContAirSimDroneEnv(AirSimEnv):
             return img_rgb
         else:
             return np.array([])
+
+    def _get_position(self, state: airsim.KinematicsState):
+        return np.array([state.position.x_val, state.position.y_val, state.position.z_val])
     
-    def close(self):
-        if self.drone:
-            self.drone.enableApiControl(False)
-            self.drone.armDisarm(False)
-            self.drone.reset()
+    def _get_velocity(self, state: airsim.KinematicsState):
+        return np.array([state.linear_velocity.x_val, state.linear_velocity.y_val, state.linear_velocity.z_val])
+    
+    def _get_acceleration(self, state: airsim.KinematicsState):
+        return np.array([state.linear_acceleration.x_val, state.linear_acceleration.y_val, state.linear_acceleration.z_val])
+    
+    def _get_distance_to_goal(self, position: np.ndarray):
+        return np.linalg.norm(position - self.goal)
+
+    def _get_angle_to_goal(self, state: airsim.KinematicsState):
+        position = self._get_position(state)
+        return math.atan2(self.goal[1] - position[1], self.goal[0] - position[0]) - state.orientation.z_val
+    
+    def _check_collision(self):
+        collision_info = self.drone.simGetCollisionInfo()
+        return collision_info.has_collided
