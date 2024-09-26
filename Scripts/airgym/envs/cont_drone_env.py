@@ -20,7 +20,6 @@ class ContDroneEnv(AirSimEnv):
             'distance_to_goal': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
             'angle_to_goal': spaces.Box(low=-np.pi, high=np.pi, shape=(1,), dtype=np.float32),
             'velocity': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
-            'acceleration': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)
         })
         self.action_space = spaces.Box(low=np.array([-1, -1, -1]), high=np.array([1, 1, 1]), shape=(3,), dtype=np.float32)
 
@@ -72,7 +71,6 @@ class ContDroneEnv(AirSimEnv):
 
         position = self._get_position(state)
         velocity = self._get_velocity(state)
-        acceleration = self._get_acceleration(state)
 
         distance_to_goal = self._get_distance_to_goal(position)
         angle_to_goal = self._get_angle_to_goal(state)
@@ -82,7 +80,6 @@ class ContDroneEnv(AirSimEnv):
             'distance_to_goal': distance_to_goal,
             'angle_to_goal': angle_to_goal,
             'velocity': velocity,
-            'acceleration': acceleration,
         }
 
         return obs
@@ -145,7 +142,6 @@ class ContDroneEnv(AirSimEnv):
 
         info = {
             "velocity": obs["velocity"],
-            "acceleration": obs["acceleration"],
             "distance_to_goal": obs["distance_to_goal"],
             "angle_to_goal": obs["angle_to_goal"],
             "depth_image": obs["depth_image"]
@@ -168,9 +164,6 @@ class ContDroneEnv(AirSimEnv):
     
     def _get_velocity(self, state: airsim.KinematicsState):
         return np.array([state.linear_velocity.x_val, state.linear_velocity.y_val, state.linear_velocity.z_val])
-    
-    def _get_acceleration(self, state: airsim.KinematicsState):
-        return np.array([state.linear_acceleration.x_val, state.linear_acceleration.y_val, state.linear_acceleration.z_val])
     
     def _get_distance_to_goal(self, position: np.ndarray):
         return np.linalg.norm(position - self.goal)

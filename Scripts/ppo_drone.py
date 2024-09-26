@@ -36,7 +36,7 @@ model = PPO(
     "MultiInputPolicy",
     env,
     verbose=1,
-    tensorboard_log="../Logs/tb_logs/PPO/",
+    tensorboard_log="../Logs/PPO/TB/",
     device="cuda",
 )
 
@@ -56,7 +56,7 @@ callbacks = [custom_callback]
 
 # Train the model
 model.learn(
-    total_timesteps=1_000_000,
+    total_timesteps=1_000,
     callback=callbacks,
     tb_log_name="ppo_airsim_drone_run_" + str(time.time()),
 )
