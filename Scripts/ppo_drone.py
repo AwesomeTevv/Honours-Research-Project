@@ -52,7 +52,7 @@ eval_callback = EvalCallback(
 custom_callback = CustomCallback()
 
 # Combine callbacks
-callbacks = [custom_callback]
+callbacks = [eval_callback, custom_callback]
 
 # Train the model
 model.learn(
