@@ -2,7 +2,6 @@ import setup_path
 import airsim
 import numpy as np
 import math
-import time
 from gym import spaces
 from airgym.envs.airsim_env import AirSimEnv
 
@@ -21,7 +20,7 @@ class ContDroneEnv(AirSimEnv):
             'angle_to_goal': spaces.Box(low=-np.pi, high=np.pi, shape=(1,), dtype=np.float32),
             'velocity': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
         })
-        self.action_space = spaces.Box(low=np.array([-1, -1, -1]), high=np.array([1, 1, 1]), shape=(3,), dtype=np.float32)
+        self.action_space = spaces.Box(low=np.array([-1, -1, -1]), high=np.array([1, 1, 1]), dtype=np.float32)
 
         self.drone = airsim.MultirotorClient(ip=ip_address)
         self.drone.confirmConnection()
@@ -47,6 +46,8 @@ class ContDroneEnv(AirSimEnv):
         # Set home position and velocity
         self.drone.moveToPositionAsync(0, 0, -1, 5).join()
         self.drone.moveByVelocityAsync(0, 0, 0, 1).join()
+
+        # self.drone.rotateToYawAsync(0).join()
     
     def _transform_obs(self, responses):
         response = responses[0]
@@ -106,7 +107,7 @@ class ContDroneEnv(AirSimEnv):
         
         # Add additional rewards and penalties
         if distance_to_goal < 1.0:
-            reward += 10  # Big reward for reaching the goal
+            reward += 10 + ((self.max_timesteps / self.current_timestep) * 10)  # Bigger reward for reaching the goal fast
             print(f"Drone: I made it! [{self.current_timestep}]", end=" ")
             done = True
         elif self.current_timestep >= self.max_timesteps:
@@ -132,7 +133,19 @@ class ContDroneEnv(AirSimEnv):
         self.current_timestep += 1
 
         vx, vy, vz = float(action[0]), float(action[1]), float(action[2])
-        self.drone.moveByVelocityAsync(vx, vy, vz, duration=1).join()
+        # yaw_rate = float(action[3]) * 30 # Degrees per second
+
+        # desired_yaw = math.atan2(vy, vx)
+        # desired_yaw_degress = math.degrees(desired_yaw)
+
+        # yaw_mode = airsim.YawMode(is_rate=True, yaw_or_rate=yaw_rate)
+        # yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=desired_yaw_degress)
+
+        try:
+            self.drone.moveByVelocityAsync(vx, vy, vz, duration=1).join()
+            # self.drone.moveByVelocityAsync(vx, vy, vz, duration=2, yaw_mode=yaw_mode).join()
+        except Exception as e:
+            print(f"Error in moveByVelocityAsync: {e}")
 
         obs = self._get_obs()
 

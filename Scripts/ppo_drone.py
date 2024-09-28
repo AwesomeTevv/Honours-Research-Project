@@ -1,13 +1,11 @@
 import gym
-import numpy as np
 import airgym
 import time
 import wandb
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.vec_env import DummyVecEnv, VecTransposeImage
+from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.callbacks import EvalCallback
 
 from custom_callback import CustomCallback
 
@@ -28,35 +26,37 @@ env = DummyVecEnv(
     ]
 )
 
-# Wrap env as VecTransposeImage to allow SB to handle frame observations
-env = VecTransposeImage(env)
-
 # Initialise PPO model with custom policy
 model = PPO(
     "MultiInputPolicy",
     env,
     verbose=1,
+    n_steps=200,
     tensorboard_log="../Logs/PPO/TB/",
     device="cuda",
 )
 
-eval_callback = EvalCallback(
-    env,
-    callback_on_new_best=None,
-    n_eval_episodes=5,
-    best_model_save_path=f"../Models/PPO/SB/ppo_best_model_{int(time.time())}",
-    log_path="../Logs/PPO/SB/",
-    eval_freq=10,
+custom_callback = CustomCallback(
+    save_freq=5,
+    save_path="../Models/PPO/SB/"
 )
 
-custom_callback = CustomCallback()
-
 # Combine callbacks
-callbacks = [eval_callback, custom_callback]
+callbacks = [custom_callback]
+
+num_epochs = 1000       # Total number of epochs
+num_episodes = 1        # Number of episodes per epoch
+num_timesteps = 200     # Number of timesteps per episode
+
+total_timesteps = num_epochs * num_episodes * num_timesteps
+
+model.policy_kwargs = {
+    "ent_coef": 0.01,   # Encouraging early exploration
+}
 
 # Train the model
 model.learn(
-    total_timesteps=1_000,
+    total_timesteps=total_timesteps,
     callback=callbacks,
     tb_log_name="ppo_airsim_drone_run_" + str(time.time()),
 )
