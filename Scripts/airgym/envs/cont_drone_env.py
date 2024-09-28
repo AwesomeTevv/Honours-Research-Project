@@ -5,6 +5,8 @@ import math
 from gym import spaces
 from airgym.envs.airsim_env import AirSimEnv
 
+from style import Format
+
 class ContDroneEnv(AirSimEnv):
     def __init__(self, ip_address, step_length, image_shape):
         super().__init__(image_shape)
@@ -107,16 +109,16 @@ class ContDroneEnv(AirSimEnv):
         
         # Add additional rewards and penalties
         if distance_to_goal < 1.0:
-            reward += 10 + ((self.max_timesteps / self.current_timestep) * 10)  # Bigger reward for reaching the goal fast
-            print(f"Drone: I made it! [{self.current_timestep}]", end=" ")
+            reward += 10
+            print(f"Drone: {Format.GREEN}I made it!{Format.END} [{self.current_timestep}]", end=" ")
             done = True
         elif self.current_timestep >= self.max_timesteps:
-            print(f"Drone: I took too long... [{self.current_timestep}]", end=" ")
+            print(f"Drone: {Format.YELLOW}I took too long...{Format.END} [{self.current_timestep}]", end=" ")
             done = True
         
         if self._check_collision():
             reward -= 10  # Penalty for collision
-            print(f"Drone: I hit something... [{self.current_timestep}]", end=" ")
+            print(f"Drone: {Format.RED}I hit something...{Format.END} [{self.current_timestep}]", end=" ")
             done = True
         
         return reward, done
