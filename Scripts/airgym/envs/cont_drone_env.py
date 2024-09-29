@@ -17,7 +17,9 @@ class ContDroneEnv(AirSimEnv):
         self.current_timestep = 0
 
         self.observation_space = spaces.Dict({
-            'depth_image': spaces.Box(low=0, high=255, shape=(84, 84, 1), dtype=np.uint8),
+            'lidar_mean_distance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            'lidar_density': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            'lidar_variance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
             'distance_to_goal': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
             'angle_to_goal': spaces.Box(low=-np.pi, high=np.pi, shape=(1,), dtype=np.float32),
             'velocity': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
@@ -31,9 +33,7 @@ class ContDroneEnv(AirSimEnv):
 
         self.goal = np.array([21.7, -8.93, -1.63])
 
-        self.image_request = airsim.ImageRequest(
-            0, airsim.ImageType.DepthPerspective, True, False
-        )
+        self.lidar_name = "LidarSensor1"
 
         self._setup_flight()
 
@@ -48,8 +48,19 @@ class ContDroneEnv(AirSimEnv):
         # Set home position and velocity
         self.drone.moveToPositionAsync(0, 0, -1, 5).join()
         self.drone.moveByVelocityAsync(0, 0, 0, 1).join()
+    
+    def _process_lidar(self, lidar_points):
+        if lidar_points.shape[0] == 0:
+            return 0, 0, 0
 
-        # self.drone.rotateToYawAsync(0).join()
+        distances = np.linalg.norm(lidar_points, axis=1)
+        mean_distance = np.mean(distances)
+
+        density = lidar_points.shape[0] / np.max(distances)
+
+        variance = np.var(distances)
+
+        return mean_distance, density, variance
     
     def _transform_obs(self, responses):
         response = responses[0]
@@ -66,9 +77,14 @@ class ContDroneEnv(AirSimEnv):
         return im_final.reshape([84, 84, 1])
     
     def _get_obs(self):
-        responses = self.drone.simGetImages([self.image_request])
+        lidar_data = self.drone.getLidarData(lidar_name=self.lidar_name)
+
+        if len(lidar_data.point_cloud) < 3:
+            print("No LiDAR data available...")
+            return self.reset()
         
-        depth_image = self._transform_obs(responses)
+        lidar_points = np.array(lidar_data.point_cloud, dtype=np.float32).reshape(-1, 3)
+        lidar_mean, lidar_density, lidar_variance = self._process_lidar(lidar_points)
 
         state = self.drone.getMultirotorState().kinematics_estimated
 
@@ -79,7 +95,9 @@ class ContDroneEnv(AirSimEnv):
         angle_to_goal = self._get_angle_to_goal(state)
 
         obs = {
-            'depth_image': depth_image,
+            'lidar_mean_distance': np.array([lidar_mean], dtype=np.float32),
+            'lidar_density': np.array([lidar_density], dtype=np.float32),
+            'lidar_variance': np.array([lidar_variance], dtype=np.float32),
             'distance_to_goal': distance_to_goal,
             'angle_to_goal': angle_to_goal,
             'velocity': velocity,
@@ -137,15 +155,15 @@ class ContDroneEnv(AirSimEnv):
         vx, vy, vz = float(action[0]), float(action[1]), float(action[2])
         # yaw_rate = float(action[3]) * 30 # Degrees per second
 
-        # desired_yaw = math.atan2(vy, vx)
-        # desired_yaw_degress = math.degrees(desired_yaw)
+        desired_yaw = math.atan2(vy, vx)
+        desired_yaw_degress = math.degrees(desired_yaw)
 
         # yaw_mode = airsim.YawMode(is_rate=True, yaw_or_rate=yaw_rate)
-        # yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=desired_yaw_degress)
+        yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=desired_yaw_degress)
 
         try:
-            self.drone.moveByVelocityAsync(vx, vy, vz, duration=1).join()
-            # self.drone.moveByVelocityAsync(vx, vy, vz, duration=2, yaw_mode=yaw_mode).join()
+            # self.drone.moveByVelocityAsync(vx, vy, vz, duration=1).join()
+            self.drone.moveByVelocityAsync(vx, vy, vz, duration=2, yaw_mode=yaw_mode).join()
         except Exception as e:
             print(f"Error in moveByVelocityAsync: {e}")
 
@@ -159,20 +177,15 @@ class ContDroneEnv(AirSimEnv):
             "velocity": obs["velocity"],
             "distance_to_goal": obs["distance_to_goal"],
             "angle_to_goal": obs["angle_to_goal"],
-            "depth_image": obs["depth_image"]
+            "lidar_mean_distance": obs["lidar_mean_distance"],
+            "lidar_density": obs["lidar_density"],
+            "lidar_variance": obs["lidar_variance"]
         }
 
         return obs, reward, done, info
     
     def render(self, mode='rgb_array'):
-        if mode == 'rgb_array':
-            responses = self.drone.simGetImages([airsim.ImageRequest("0", airsim.ImageType.Scene, False, False)])
-            response = responses[0]
-            img1d = np.fromstring(response.image_data_uint8, dtype=np.uint8)
-            img_rgb = img1d.reshape(response.height, response.width, 3)
-            return img_rgb
-        else:
-            return np.array([])
+        return np.array([])
 
     def _get_position(self, state: airsim.KinematicsState):
         return np.array([state.position.x_val, state.position.y_val, state.position.z_val])

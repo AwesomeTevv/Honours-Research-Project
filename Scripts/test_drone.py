@@ -6,13 +6,16 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.vec_env import DummyVecEnv, VecTransposeImage
 from stable_baselines3.common.monitor import Monitor
 
+import os
+import sys
+
 
 # Create a DummyVecEnv for main airsim gym env
 env = DummyVecEnv(
     [
         lambda: Monitor(
             gym.make(
-                "airgym:airsim-v2",
+                "airgym:airsim-drone-cont-v1",
                 ip_address="127.0.0.1",
                 step_length=0.25,
                 image_shape=(84, 84, 2),
@@ -22,10 +25,13 @@ env = DummyVecEnv(
 )
 
 # Wrap env as VecTransposeImage to allow SB to handle frame observations
-env = VecTransposeImage(env)
+# env = VecTransposeImage(env)
 
 # Load the trained PPO model
-model = PPO.load("best_model_2/best_model.zip")
+model_loc = str(sys.argv[1])
+print(f"Loading model from location: {model_loc}")
+
+model = PPO.load(model_loc, weights_only=False)
 
 obs = env.reset()
 
