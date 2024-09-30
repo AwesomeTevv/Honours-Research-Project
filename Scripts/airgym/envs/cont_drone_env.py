@@ -103,7 +103,7 @@ class ContDroneEnv(AirSimEnv):
             'velocity': velocity,
         }
 
-        return obs
+        return obs, lidar_data, position
     
     def _compute_reward(self):
         state = self.drone.getMultirotorState().kinematics_estimated
@@ -144,7 +144,7 @@ class ContDroneEnv(AirSimEnv):
     def reset(self):
         self._setup_flight()
         self.current_timestep = 0
-        return self._get_obs()
+        return self._get_obs()[0]
     
     def close(self):
         self.__del__()
@@ -155,19 +155,19 @@ class ContDroneEnv(AirSimEnv):
         vx, vy, vz = float(action[0]), float(action[1]), float(action[2])
         # yaw_rate = float(action[3]) * 30 # Degrees per second
 
-        desired_yaw = math.atan2(vy, vx)
-        desired_yaw_degress = math.degrees(desired_yaw)
+        # desired_yaw = math.atan2(vy, vx)
+        # desired_yaw_degress = math.degrees(desired_yaw)
 
         # yaw_mode = airsim.YawMode(is_rate=True, yaw_or_rate=yaw_rate)
-        yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=desired_yaw_degress)
+        # yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=desired_yaw_degress)
 
         try:
-            # self.drone.moveByVelocityAsync(vx, vy, vz, duration=1).join()
-            self.drone.moveByVelocityAsync(vx, vy, vz, duration=2, yaw_mode=yaw_mode).join()
+            self.drone.moveByVelocityAsync(vx, vy, vz, duration=1).join()
+            # self.drone.moveByVelocityAsync(vx, vy, vz, duration=2, yaw_mode=yaw_mode).join()
         except Exception as e:
             print(f"Error in moveByVelocityAsync: {e}")
 
-        obs = self._get_obs()
+        obs, lidar_points, position = self._get_obs()
 
         reward, done = self._compute_reward()
         if done:
@@ -179,7 +179,11 @@ class ContDroneEnv(AirSimEnv):
             "angle_to_goal": obs["angle_to_goal"],
             "lidar_mean_distance": obs["lidar_mean_distance"],
             "lidar_density": obs["lidar_density"],
-            "lidar_variance": obs["lidar_variance"]
+            "lidar_variance": obs["lidar_variance"],
+            "collision": self._check_collision(),
+            "position": position,
+            "lidar_data": lidar_points,
+            "goal": self.goal
         }
 
         return obs, reward, done, info

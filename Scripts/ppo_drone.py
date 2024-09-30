@@ -10,7 +10,7 @@ from stable_baselines3.common.monitor import Monitor
 from custom_callback import CustomCallback
 
 # Initialise Weights & Biases
-wandb.init(project="airsim-drone-rl", sync_tensorboard=True)
+wandb.init(project="airsim-drone-rl", name="NumberOfChannels-Low")
 
 # Create a DummyVecEnv for main airsim gym env
 env = DummyVecEnv(
