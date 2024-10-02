@@ -63,21 +63,6 @@ class CustomCallback(BaseCallback):
 
             wandb.log(log_data)
 
-            if 'pg_loss' in self.locals:
-                policy_loss = self.locals['pg_loss'].item()
-                value_loss = self.locals['vf_loss'].item()
-                entropy_loss = self.locals['entropy_loss'].item()
-                learning_rate = self.locals['learning_rate']
-
-                wandb.log({
-                    "Policy Loss": policy_loss,
-                    "Value Loss": value_loss,
-                    "Entropy Loss": entropy_loss,
-                    "Learning Rate": learning_rate,
-                })
-
-            # log_lidar_point_cloud_3d(self.locals["infos"][-1]["lidar_data"], step=self.episode_counter)
-
             # Save the best model if reward improves
             if reward > self.best_reward:
                 self.best_reward = reward
