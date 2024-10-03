@@ -28,9 +28,9 @@ class CustomCallback(BaseCallback):
             velocity = np.mean([info["velocity"] for info in self.locals["infos"]])
             distance_to_goal = self.locals["infos"][-1]["distance_to_goal"]
             angle_to_goal = self.locals["infos"][-1]["angle_to_goal"]
-            lidar_mean_distance = self.locals["infos"][-1]["lidar_mean_distance"]
-            lidar_density = self.locals["infos"][-1]["lidar_density"]
-            lidar_variance = self.locals["infos"][-1]["lidar_variance"]
+            # lidar_mean_distance = self.locals["infos"][-1]["lidar_mean_distance"]
+            # lidar_density = self.locals["infos"][-1]["lidar_density"]
+            # lidar_variance = self.locals["infos"][-1]["lidar_variance"]
 
             collision_occurred = any(info.get("collision", False) for info in self.locals["infos"])
             self.collisions.append(int(collision_occurred))
@@ -53,9 +53,9 @@ class CustomCallback(BaseCallback):
                 "Average Velocity": velocity,
                 "Distance to Goal": distance_to_goal,
                 "Angle to Goal": angle_to_goal,
-                "LiDAR Mean Distance": lidar_mean_distance,
-                "LiDAR Density": lidar_density,
-                "LiDAR Variance": lidar_variance,
+                # "LiDAR Mean Distance": lidar_mean_distance,
+                # "LiDAR Density": lidar_density,
+                # "LiDAR Variance": lidar_variance,
                 "Episode Length": episode_length,
                 "Collision Occurred": int(not collision_occurred),
                 "LiDAR Point Cloud": wandb.Object3D(point_cloud)

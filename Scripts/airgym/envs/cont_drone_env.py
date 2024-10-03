@@ -16,10 +16,13 @@ class ContDroneEnv(AirSimEnv):
         self.max_timesteps = 200
         self.current_timestep = 0
 
+        self.max_points = 10_000
+
         self.observation_space = spaces.Dict({
-            'lidar_mean_distance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
-            'lidar_density': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
-            'lidar_variance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            'lidar_points': spaces.Box(low=-np.inf, high=np.inf, shape=(self.max_points, 3), dtype=np.float32),
+            # 'lidar_mean_distance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            # 'lidar_density': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            # 'lidar_variance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
             'distance_to_goal': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
             'angle_to_goal': spaces.Box(low=-np.pi, high=np.pi, shape=(1,), dtype=np.float32),
             'velocity': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
@@ -52,15 +55,21 @@ class ContDroneEnv(AirSimEnv):
     def _process_lidar(self, lidar_points):
         if lidar_points.shape[0] == 0:
             return 0, 0, 0
+        
+        num_points = lidar_points.shape[0]
+    
+        lidar_points_fixed = np.zeros((self.max_points, 3), dtype=np.float32)
+        lidar_points_fixed[:min(num_points, self.max_points), :] = lidar_points[:self.max_points, :]
 
-        distances = np.linalg.norm(lidar_points, axis=1)
-        mean_distance = np.mean(distances)
+        # distances = np.linalg.norm(lidar_points, axis=1)
+        # mean_distance = np.mean(distances)
 
-        density = lidar_points.shape[0] / np.max(distances)
+        # density = lidar_points.shape[0] / np.max(distances)
 
-        variance = np.var(distances)
+        # variance = np.var(distances)
 
-        return mean_distance, density, variance
+        # return mean_distance, density, variance
+        return lidar_points_fixed
     
     def _transform_obs(self, responses):
         response = responses[0]
@@ -84,7 +93,8 @@ class ContDroneEnv(AirSimEnv):
             return self.reset()
         
         lidar_points = np.array(lidar_data.point_cloud, dtype=np.float32).reshape(-1, 3)
-        lidar_mean, lidar_density, lidar_variance = self._process_lidar(lidar_points)
+        # lidar_mean, lidar_density, lidar_variance = self._process_lidar(lidar_points)
+        lidar_points = self._process_lidar(lidar_points)
 
         state = self.drone.getMultirotorState().kinematics_estimated
 
@@ -95,9 +105,10 @@ class ContDroneEnv(AirSimEnv):
         angle_to_goal = self._get_angle_to_goal(state)
 
         obs = {
-            'lidar_mean_distance': np.array([lidar_mean], dtype=np.float32),
-            'lidar_density': np.array([lidar_density], dtype=np.float32),
-            'lidar_variance': np.array([lidar_variance], dtype=np.float32),
+            'lidar_points': lidar_points,
+            # 'lidar_mean_distance': np.array([lidar_mean], dtype=np.float32),
+            # 'lidar_density': np.array([lidar_density], dtype=np.float32),
+            # 'lidar_variance': np.array([lidar_variance], dtype=np.float32),
             'distance_to_goal': distance_to_goal,
             'angle_to_goal': angle_to_goal,
             'velocity': velocity,
@@ -177,9 +188,9 @@ class ContDroneEnv(AirSimEnv):
             "velocity": obs["velocity"],
             "distance_to_goal": obs["distance_to_goal"],
             "angle_to_goal": obs["angle_to_goal"],
-            "lidar_mean_distance": obs["lidar_mean_distance"],
-            "lidar_density": obs["lidar_density"],
-            "lidar_variance": obs["lidar_variance"],
+            # "lidar_mean_distance": obs["lidar_mean_distance"],
+            # "lidar_density": obs["lidar_density"],
+            # "lidar_variance": obs["lidar_variance"],
             "collision": self._check_collision(),
             "position": position,
             "lidar_data": lidar_points,
