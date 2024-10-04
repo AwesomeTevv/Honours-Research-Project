@@ -15,8 +15,6 @@ class CustomCallback(BaseCallback):
         self.rewards = []
         self.velocities = []
         self.episode_lengths = []
-        self.collisions = []
-        self.positions = []
 
         self.current_episode_length = 0
 
@@ -33,9 +31,6 @@ class CustomCallback(BaseCallback):
             lidar_density = self.locals["infos"][-1]["lidar_density"]
             lidar_variance = self.locals["infos"][-1]["lidar_variance"]
 
-            collision_occurred = any(info.get("collision", False) for info in self.locals["infos"])
-            self.collisions.append(int(collision_occurred))
-
             episode_length = self.current_episode_length
             self.episode_lengths.append(episode_length)
             self.current_episode_length = 0
@@ -44,7 +39,6 @@ class CustomCallback(BaseCallback):
 
             # lidar_data = self.locals["infos"][-1]["lidar_data"]
             # point_cloud = np.array(lidar_data.point_cloud, dtype=np.float32).reshape(-1, 3)
-
 
             log_data = {
                 "Episode Reward": reward,
@@ -55,7 +49,6 @@ class CustomCallback(BaseCallback):
                 "LiDAR Density": lidar_density,
                 "LiDAR Variance": lidar_variance,
                 "Episode Length": episode_length,
-                "Collision Occurred": int(not collision_occurred),
                 "End Position": position
                 # "LiDAR Point Cloud": wandb.Object3D(point_cloud)
             }

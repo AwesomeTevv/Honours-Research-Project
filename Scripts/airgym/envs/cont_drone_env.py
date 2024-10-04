@@ -231,7 +231,6 @@ class ContDroneEnv(AirSimEnv):
             "lidar_mean_distance": obs["lidar_mean_distance"],
             "lidar_density": obs["lidar_density"],
             "lidar_variance": obs["lidar_variance"],
-            "collision": self._check_collision(),
             "position": obs["position"],
             "lidar_data": obs["lidar_points"],
             "goal": self.goal
