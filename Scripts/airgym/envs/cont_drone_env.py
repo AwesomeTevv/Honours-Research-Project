@@ -18,11 +18,15 @@ class ContDroneEnv(AirSimEnv):
 
         self.max_points = 10_000
 
+        self.voxel_grid_size = (20, 20, 5)
+        self.voxel_bounds = [(-10, 10), (-10, 10), (-5, 5)]
+
         self.observation_space = spaces.Dict({
             'lidar_points': spaces.Box(low=-np.inf, high=np.inf, shape=(self.max_points, 3), dtype=np.float32),
             'lidar_mean_distance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
             'lidar_density': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
             'lidar_variance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            'lidar_voxel_grid': spaces.Box(low=0, high=np.inf, shape=self.voxel_grid_size, dtype=np.float32),
             'distance_to_goal': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
             'angle_to_goal': spaces.Box(low=-np.pi, high=np.pi, shape=(1,), dtype=np.float32),
             'velocity': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
@@ -53,10 +57,41 @@ class ContDroneEnv(AirSimEnv):
         self.drone.moveToPositionAsync(0, 0, -1, 5).join()
         self.drone.moveByVelocityAsync(0, 0, 0, 1).join()
     
+    def _compute_voxel_grid(self, lidar_points):
+        """
+        Create a voxel grid from LiDAR points.
+        The grid is of size self.voxel_grid_size and is bounded by self.voxel_bounds.
+        """
+        x_bounds, y_bounds, z_bounds = self.voxel_bounds
+
+        # Create an empty grid
+        voxel_grid = np.zeros(self.voxel_grid_size, dtype=np.float32)
+
+        # Filter points within the voxel bounds
+        mask = (
+            (lidar_points[:, 0] >= x_bounds[0]) & (lidar_points[:, 0] <= x_bounds[1]) &
+            (lidar_points[:, 1] >= y_bounds[0]) & (lidar_points[:, 1] <= y_bounds[1]) &
+            (lidar_points[:, 2] >= z_bounds[0]) & (lidar_points[:, 2] <= z_bounds[1])
+        )
+        lidar_points = lidar_points[mask]
+
+        # Compute voxel indices
+        x_indices = np.floor((lidar_points[:, 0] - x_bounds[0]) / (x_bounds[1] - x_bounds[0]) * self.voxel_grid_size[0]).astype(int)
+        y_indices = np.floor((lidar_points[:, 1] - y_bounds[0]) / (y_bounds[1] - y_bounds[0]) * self.voxel_grid_size[1]).astype(int)
+        z_indices = np.floor((lidar_points[:, 2] - z_bounds[0]) / (z_bounds[1] - z_bounds[0]) * self.voxel_grid_size[2]).astype(int)
+
+        # Increment voxel grid counts
+        for x, y, z in zip(x_indices, y_indices, z_indices):
+            voxel_grid[x, y, z] += 1
+
+        return voxel_grid
+    
     def _process_lidar(self, lidar_points):
         if lidar_points.shape[0] == 0:
             return 0, 0, 0
         
+        voxel_grid = self._compute_voxel_grid(lidar_points)
+
         num_points = lidar_points.shape[0]
     
         lidar_points_fixed = np.zeros((self.max_points, 3), dtype=np.float32)
@@ -69,7 +104,7 @@ class ContDroneEnv(AirSimEnv):
 
         variance = np.var(distances)
 
-        return lidar_points_fixed, mean_distance, density, variance
+        return lidar_points_fixed, mean_distance, density, variance, voxel_grid
     
     def _transform_obs(self, responses):
         response = responses[0]
@@ -93,7 +128,7 @@ class ContDroneEnv(AirSimEnv):
             return self.reset()
         
         lidar_points = np.array(lidar_data.point_cloud, dtype=np.float32).reshape(-1, 3)
-        lidar_points, lidar_mean, lidar_density, lidar_variance = self._process_lidar(lidar_points)
+        lidar_points, lidar_mean, lidar_density, lidar_variance, voxel_grid = self._process_lidar(lidar_points)
 
         state = self.drone.getMultirotorState().kinematics_estimated
 
@@ -105,9 +140,10 @@ class ContDroneEnv(AirSimEnv):
 
         obs = {
             'lidar_points': lidar_points,
-            "lidar_mean_distance": lidar_mean,
-            "lidar_density": lidar_density,
-            "lidar_variance": lidar_variance,
+            'lidar_mean_distance': lidar_mean,
+            'lidar_density': lidar_density,
+            'lidar_variance': lidar_variance,
+            'lidar_voxel_grid': voxel_grid,
             'distance_to_goal': distance_to_goal,
             'angle_to_goal': angle_to_goal,
             'velocity': velocity,
