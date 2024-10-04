@@ -20,12 +20,13 @@ class ContDroneEnv(AirSimEnv):
 
         self.observation_space = spaces.Dict({
             'lidar_points': spaces.Box(low=-np.inf, high=np.inf, shape=(self.max_points, 3), dtype=np.float32),
-            # 'lidar_mean_distance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
-            # 'lidar_density': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
-            # 'lidar_variance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            'lidar_mean_distance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            'lidar_density': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
+            'lidar_variance': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
             'distance_to_goal': spaces.Box(low=0, high=np.inf, shape=(1,), dtype=np.float32),
             'angle_to_goal': spaces.Box(low=-np.pi, high=np.pi, shape=(1,), dtype=np.float32),
             'velocity': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32),
+            'position': spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)
         })
         self.action_space = spaces.Box(low=np.array([-1, -1, -1]), high=np.array([1, 1, 1]), dtype=np.float32)
 
@@ -61,15 +62,14 @@ class ContDroneEnv(AirSimEnv):
         lidar_points_fixed = np.zeros((self.max_points, 3), dtype=np.float32)
         lidar_points_fixed[:min(num_points, self.max_points), :] = lidar_points[:self.max_points, :]
 
-        # distances = np.linalg.norm(lidar_points, axis=1)
-        # mean_distance = np.mean(distances)
+        distances = np.linalg.norm(lidar_points, axis=1)
+        mean_distance = np.mean(distances)
 
-        # density = lidar_points.shape[0] / np.max(distances)
+        density = lidar_points.shape[0] / np.max(distances)
 
-        # variance = np.var(distances)
+        variance = np.var(distances)
 
-        # return mean_distance, density, variance
-        return lidar_points_fixed
+        return lidar_points_fixed, mean_distance, density, variance
     
     def _transform_obs(self, responses):
         response = responses[0]
@@ -93,8 +93,7 @@ class ContDroneEnv(AirSimEnv):
             return self.reset()
         
         lidar_points = np.array(lidar_data.point_cloud, dtype=np.float32).reshape(-1, 3)
-        # lidar_mean, lidar_density, lidar_variance = self._process_lidar(lidar_points)
-        lidar_points = self._process_lidar(lidar_points)
+        lidar_points, lidar_mean, lidar_density, lidar_variance = self._process_lidar(lidar_points)
 
         state = self.drone.getMultirotorState().kinematics_estimated
 
@@ -106,15 +105,16 @@ class ContDroneEnv(AirSimEnv):
 
         obs = {
             'lidar_points': lidar_points,
-            # 'lidar_mean_distance': np.array([lidar_mean], dtype=np.float32),
-            # 'lidar_density': np.array([lidar_density], dtype=np.float32),
-            # 'lidar_variance': np.array([lidar_variance], dtype=np.float32),
+            "lidar_mean_distance": lidar_mean,
+            "lidar_density": lidar_density,
+            "lidar_variance": lidar_variance,
             'distance_to_goal': distance_to_goal,
             'angle_to_goal': angle_to_goal,
             'velocity': velocity,
+            'position': position
         }
 
-        return obs, lidar_data, position
+        return obs
     
     def _compute_reward(self):
         state = self.drone.getMultirotorState().kinematics_estimated
@@ -134,21 +134,25 @@ class ContDroneEnv(AirSimEnv):
         done = False
 
         # Reward for moving towards the goal
-        reward = direction_dot_product  # Positive if moving towards the goal
+        reward = direction_dot_product * 10 # Positive if moving towards the goal
         
         # Add additional rewards and penalties
         if distance_to_goal < 1.0:
-            reward += 10
-            print(f"Drone: {Format.GREEN}I made it!{Format.END} [{self.current_timestep}]", end=" ")
+            reward += 100
+            print(f"Drone: {Format.GREEN}Made it!{Format.END}\t[t={self.current_timestep}]", end="\t")
             done = True
         elif self.current_timestep >= self.max_timesteps:
-            print(f"Drone: {Format.YELLOW}I took too long...{Format.END} [{self.current_timestep}]", end=" ")
+            print(f"Drone: {Format.YELLOW}Too long{Format.END}\t[t={self.current_timestep}]", end="\t")
+            reward -= 20
             done = True
         
         if self._check_collision():
-            reward -= 10  # Penalty for collision
-            print(f"Drone: {Format.RED}I hit something...{Format.END} [{self.current_timestep}]", end=" ")
+            reward -= 50  # Penalty for collision
+            print(f"Drone: {Format.RED}Collided{Format.END}\t[t={self.current_timestep}]", end="\t")
             done = True
+        
+        if np.linalg.norm(velocity) < 0.1:
+            reward -= 5 # Penalty for moving too slow
         
         return reward, done
 
@@ -178,22 +182,22 @@ class ContDroneEnv(AirSimEnv):
         except Exception as e:
             print(f"Error in moveByVelocityAsync: {e}")
 
-        obs, lidar_points, position = self._get_obs()
+        obs = self._get_obs()
 
         reward, done = self._compute_reward()
         if done:
-            print(f"[{reward}]")
+            print(f"[r={reward:.2f}]")
 
         info = {
             "velocity": obs["velocity"],
             "distance_to_goal": obs["distance_to_goal"],
             "angle_to_goal": obs["angle_to_goal"],
-            # "lidar_mean_distance": obs["lidar_mean_distance"],
-            # "lidar_density": obs["lidar_density"],
-            # "lidar_variance": obs["lidar_variance"],
+            "lidar_mean_distance": obs["lidar_mean_distance"],
+            "lidar_density": obs["lidar_density"],
+            "lidar_variance": obs["lidar_variance"],
             "collision": self._check_collision(),
-            "position": position,
-            "lidar_data": lidar_points,
+            "position": obs["position"],
+            "lidar_data": obs["lidar_points"],
             "goal": self.goal
         }
 
