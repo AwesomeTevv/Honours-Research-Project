@@ -32,6 +32,7 @@ model = PPO(
     env,
     verbose=1,
     n_steps=200,
+    batch_size=50,
     tensorboard_log="../Logs/PPO/TB/",
     device="cuda",
 )
