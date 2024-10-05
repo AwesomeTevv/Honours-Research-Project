@@ -10,7 +10,7 @@ from stable_baselines3.common.monitor import Monitor
 from custom_callback import CustomCallback
 
 # Initialise Weights & Biases
-wandb.init(project="airsim-drone-rl", name="NumberOfChannels-Standard")
+wandb.init(project="airsim-drone-rl", name="Depth-Test")
 
 # Create a DummyVecEnv for main airsim gym env
 env = DummyVecEnv(
@@ -20,7 +20,7 @@ env = DummyVecEnv(
                 "airgym:airsim-drone-cont-v1",
                 ip_address="127.0.0.1",
                 step_length=0.25,
-                image_shape=(84, 84, 2),
+                image_shape=(256, 256, 1),
             )
         )
     ]
@@ -38,22 +38,20 @@ model = PPO(
 )
 
 custom_callback = CustomCallback(
-    save_freq=5,
-    save_path="../Models/PPO/SB/",
-    model_name="NS"
+    save_freq=5, save_path="../Models/PPO/SB/", model_name="NS"
 )
 
 # Combine callbacks
 callbacks = [custom_callback]
 
-num_epochs = 1000       # Total number of epochs
-num_episodes = 1        # Number of episodes per epoch
-num_timesteps = 200     # Number of timesteps per episode
+num_epochs = 1000  # Total number of epochs
+num_episodes = 1  # Number of episodes per epoch
+num_timesteps = 200  # Number of timesteps per episode
 
 total_timesteps = num_epochs * num_episodes * num_timesteps
 
 model.policy_kwargs = {
-    "ent_coef": 0.01,   # Encouraging early exploration
+    "ent_coef": 0.01,  # Encouraging early exploration
 }
 
 # Train the model

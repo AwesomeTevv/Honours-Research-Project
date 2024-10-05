@@ -19,27 +19,8 @@ class ContDroneEnv(AirSimEnv):
 
         self.max_points = 10_000
 
-        self.voxel_grid_size = (20, 20, 5)
-        self.voxel_bounds = [(-10, 10), (-10, 10), (-5, 5)]
-
         self.observation_space = spaces.Dict(
             {
-                "lidar_points": spaces.Box(
-                    low=-np.inf,
-                    high=np.inf,
-                    shape=(self.max_points, 3),
-                    dtype=np.float32,
-                ),
-                "lidar_mean_distance": spaces.Box(
-                    low=0, high=np.inf, shape=(1,), dtype=np.float32
-                ),
-                "lidar_density": spaces.Box(
-                    low=0, high=np.inf, shape=(1,), dtype=np.float32
-                ),
-                "lidar_variance": spaces.Box(
-                    low=0, high=np.inf, shape=(1,), dtype=np.float32
-                ),
-                # 'lidar_voxel_grid': spaces.Box(low=0, high=np.inf, shape=self.voxel_grid_size, dtype=np.float32),
                 "distance_to_goal": spaces.Box(
                     low=0, high=np.inf, shape=(1,), dtype=np.float32
                 ),
@@ -52,11 +33,14 @@ class ContDroneEnv(AirSimEnv):
                 "position": spaces.Box(
                     low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32
                 ),
+                "depth_image": spaces.Box(
+                    low=0, high=255, shape=self.image_shape, dtype=np.float32
+                ),
             }
         )
         self.action_space = spaces.Box(
-            low=np.array([-1, -1, -1, -1]),
-            high=np.array([1, 1, 1, 1]),
+            low=np.array([-1, -1, -1]),
+            high=np.array([1, 1, 1]),
             dtype=np.float32,
         )
 
@@ -66,9 +50,11 @@ class ContDroneEnv(AirSimEnv):
         self.drone.armDisarm(True)
 
         # self.goal = np.array([21.7, -8.93, -1.63])
-        self.goal = np.array([3.81, -60.82, 12.36])
+        # self.goal = np.array([3.81, -60.82, 12.36])
+        self.goal = np.array([-29.46, -43.01, 0.00])
 
-        self.lidar_name = "LidarSensor1"
+        # self.lidar_name = "LidarSensor1"
+        self.sensor_name = "Distance"
 
         self._setup_flight()
 
@@ -84,72 +70,6 @@ class ContDroneEnv(AirSimEnv):
         self.drone.moveToPositionAsync(0, 0, -1, 5).join()
         self.drone.moveByVelocityAsync(0, 0, 0, 1).join()
 
-    def _compute_voxel_grid(self, lidar_points):
-        """
-        Create a voxel grid from LiDAR points.
-        The grid is of size self.voxel_grid_size and is bounded by self.voxel_bounds.
-        """
-        x_bounds, y_bounds, z_bounds = self.voxel_bounds
-
-        # Create an empty grid
-        voxel_grid = np.zeros(self.voxel_grid_size, dtype=np.float32)
-
-        # Filter points within the voxel bounds
-        mask = (
-            (lidar_points[:, 0] >= x_bounds[0])
-            & (lidar_points[:, 0] <= x_bounds[1])
-            & (lidar_points[:, 1] >= y_bounds[0])
-            & (lidar_points[:, 1] <= y_bounds[1])
-            & (lidar_points[:, 2] >= z_bounds[0])
-            & (lidar_points[:, 2] <= z_bounds[1])
-        )
-        lidar_points = lidar_points[mask]
-
-        # Compute voxel indices
-        x_indices = np.floor(
-            (lidar_points[:, 0] - x_bounds[0])
-            / (x_bounds[1] - x_bounds[0])
-            * self.voxel_grid_size[0]
-        ).astype(int)
-        y_indices = np.floor(
-            (lidar_points[:, 1] - y_bounds[0])
-            / (y_bounds[1] - y_bounds[0])
-            * self.voxel_grid_size[1]
-        ).astype(int)
-        z_indices = np.floor(
-            (lidar_points[:, 2] - z_bounds[0])
-            / (z_bounds[1] - z_bounds[0])
-            * self.voxel_grid_size[2]
-        ).astype(int)
-
-        # Increment voxel grid counts
-        for x, y, z in zip(x_indices, y_indices, z_indices):
-            voxel_grid[x, y, z] += 1
-
-        return voxel_grid
-
-    def _process_lidar(self, lidar_points):
-        if lidar_points.shape[0] == 0:
-            return 0, 0, 0
-
-        # voxel_grid = self._compute_voxel_grid(lidar_points)
-
-        num_points = lidar_points.shape[0]
-
-        lidar_points_fixed = np.zeros((self.max_points, 3), dtype=np.float32)
-        lidar_points_fixed[: min(num_points, self.max_points), :] = lidar_points[
-            : self.max_points, :
-        ]
-
-        distances = np.linalg.norm(lidar_points, axis=1)
-        mean_distance = np.mean(distances)
-
-        density = lidar_points.shape[0] / np.max(distances)
-
-        variance = np.var(distances)
-
-        return lidar_points_fixed, mean_distance, density, variance
-
     def _transform_obs(self, responses):
         response = responses[0]
 
@@ -160,20 +80,15 @@ class ContDroneEnv(AirSimEnv):
         from PIL import Image
 
         image = Image.fromarray(img2d)
-        im_final = np.array(image.resize((84, 84)).convert("L"))
+        im_final = np.array(image.resize((256, 256)).convert("L"))
 
-        return im_final.reshape([84, 84, 1])
+        return im_final.reshape([256, 256, 1])
 
     def _get_obs(self):
-        lidar_data = self.drone.getLidarData(lidar_name=self.lidar_name)
-
-        if len(lidar_data.point_cloud) < 3:
-            print("No LiDAR data available...")
-            return self.reset()
-
-        lidar_points = np.array(lidar_data.point_cloud, dtype=np.float32).reshape(-1, 3)
-        lidar_points, lidar_mean, lidar_density, lidar_variance = self._process_lidar(
-            lidar_points
+        depth_data = self._transform_obs(
+            self.drone.simGetImages(
+                [airsim.ImageRequest(0, airsim.ImageType.DepthPerspective, True, False)]
+            )
         )
 
         state = self.drone.getMultirotorState().kinematics_estimated
@@ -185,11 +100,7 @@ class ContDroneEnv(AirSimEnv):
         angle_to_goal = self._get_angle_to_goal(state)
 
         obs = {
-            "lidar_points": lidar_points,
-            "lidar_mean_distance": lidar_mean,
-            "lidar_density": lidar_density,
-            "lidar_variance": lidar_variance,
-            # 'lidar_voxel_grid': voxel_grid,
+            "depth_image": depth_data,
             "distance_to_goal": distance_to_goal,
             "angle_to_goal": angle_to_goal,
             "velocity": velocity,
@@ -206,22 +117,17 @@ class ContDroneEnv(AirSimEnv):
 
         velocity = self._get_velocity(state)
 
-        # Get vector from drone to goal
         direction_to_goal = self.goal - position
         direction_to_goal_norm = direction_to_goal / np.linalg.norm(direction_to_goal)
 
-        # Penalise movement away from goal
         direction_dot_product = np.dot(velocity, direction_to_goal_norm)
 
         done = False
 
-        # Reward for moving towards the goal
-        # reward = direction_dot_product * 10 # Positive if moving towards the goal
-        reward = -distance_to_goal
+        reward = direction_dot_product  # Positive if moving towards the goal
 
-        # Add additional rewards and penalties
         if distance_to_goal < 1.0:
-            reward += 100
+            reward += 10
             print(
                 f"Drone: {Format.GREEN}Made it!{Format.END}\t[t={self.current_timestep}]",
                 end="\t",
@@ -232,19 +138,15 @@ class ContDroneEnv(AirSimEnv):
                 f"Drone: {Format.YELLOW}Too long{Format.END}\t[t={self.current_timestep}]",
                 end="\t",
             )
-            reward -= 20
             done = True
 
         if self._check_collision():
-            reward -= 50  # Penalty for collision
+            reward -= 10  # Penalty for collision
             print(
                 f"Drone: {Format.RED}Collided{Format.END}\t[t={self.current_timestep}]",
                 end="\t",
             )
             done = True
-
-        if np.linalg.norm(velocity) < 0.1:
-            reward -= 5  # Penalty for moving too slow
 
         return reward, done
 
@@ -260,23 +162,16 @@ class ContDroneEnv(AirSimEnv):
         self.current_timestep += 1
 
         vx, vy, vz = float(action[0]), float(action[1]), float(action[2])
-        # yaw_rate = float(action[3]) * 30 # Degrees per second
-
-        # desired_yaw = math.atan2(vy, vx)
-        # desired_yaw_degress = math.degrees(desired_yaw)
-
-        # yaw_mode = airsim.YawMode(is_rate=True, yaw_or_rate=yaw_rate)
-        # yaw_mode = airsim.YawMode(is_rate=False, yaw_or_rate=desired_yaw_degress)
 
         try:
             self.drone.moveByVelocityAsync(vx, vy, vz, duration=1).join()
-            # self.drone.moveByVelocityAsync(vx, vy, vz, duration=1, yaw_mode=yaw_mode).join()
         except Exception as e:
             print(f"Error in moveByVelocityAsync: {e}")
 
         obs = self._get_obs()
 
         reward, done = self._compute_reward()
+
         if done:
             print(f"[r={reward:.2f}]")
 
@@ -284,11 +179,8 @@ class ContDroneEnv(AirSimEnv):
             "velocity": obs["velocity"],
             "distance_to_goal": obs["distance_to_goal"],
             "angle_to_goal": obs["angle_to_goal"],
-            "lidar_mean_distance": obs["lidar_mean_distance"],
-            "lidar_density": obs["lidar_density"],
-            "lidar_variance": obs["lidar_variance"],
             "position": obs["position"],
-            "lidar_data": obs["lidar_points"],
+            "depth_image": obs["depth_image"],
             "goal": self.goal,
         }
 
