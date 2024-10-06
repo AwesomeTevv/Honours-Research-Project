@@ -20,7 +20,7 @@ class ContDroneEnv(AirSimEnv):
         self.max_timesteps = 100
         self.current_timestep = 0
 
-        # self.max_points = 10_000
+        self.min_distance = 2.0
 
         self.observation_space = spaces.Dict(
             {
@@ -36,9 +36,6 @@ class ContDroneEnv(AirSimEnv):
                 "position": spaces.Box(
                     low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32
                 ),
-                # "depth_image": spaces.Box(
-                #     low=0, high=255, shape=self.image_shape, dtype=np.float32
-                # ),
                 "lidar_data": spaces.Box(
                     low=0, high=np.inf, shape=(lidar_points, 3), dtype=np.float32
                 ),
@@ -55,12 +52,9 @@ class ContDroneEnv(AirSimEnv):
         self.drone.enableApiControl(True)
         self.drone.armDisarm(True)
 
-        # self.goal = np.array([21.7, -8.93, -1.63])
-        # self.goal = np.array([3.81, -60.82, 12.36])
         self.goal = np.array([7.50, -13.20, 1.00])
 
         self.sensor_name = "LidarSensor1"
-        # self.sensor_name = "Distance"
 
         self._setup_flight()
 
@@ -77,12 +71,6 @@ class ContDroneEnv(AirSimEnv):
         self.drone.moveByVelocityAsync(0, 0, 0, 1).join()
 
     def _get_obs(self):
-        # depth_data = self._transform_obs(
-        #     self.drone.simGetImages(
-        #         [airsim.ImageRequest(0, airsim.ImageType.DepthPerspective, True, False)]
-        #     )
-        # )
-
         lidar_data = self._get_lidar_data()
 
         state = self.drone.getMultirotorState().kinematics_estimated
@@ -94,7 +82,6 @@ class ContDroneEnv(AirSimEnv):
         angle_to_goal = self._get_angle_to_goal(state)
 
         obs = {
-            # "depth_image": depth_data,
             "lidar_data": lidar_data,
             "distance_to_goal": distance_to_goal,
             "angle_to_goal": angle_to_goal,
@@ -110,19 +97,19 @@ class ContDroneEnv(AirSimEnv):
         position = self._get_position(state)
         distance_to_goal = self._get_distance_to_goal(position)
 
-        # velocity = self._get_velocity(state)
+        velocity = self._get_velocity(state)
 
-        # direction_to_goal = self.goal - position
-        # direction_to_goal_norm = direction_to_goal / np.linalg.norm(direction_to_goal)
+        direction_to_goal = self.goal - position
+        direction_to_goal_norm = direction_to_goal / np.linalg.norm(direction_to_goal)
 
-        # direction_dot_product = np.dot(velocity, direction_to_goal_norm)
+        direction_dot_product = np.dot(velocity, direction_to_goal_norm)
 
         done = False
 
-        # reward = direction_dot_product  # Positive if moving towards the goal
-        reward = -distance_to_goal
+        reward = direction_dot_product  # Positive if moving towards the goal
+        # reward = -distance_to_goal
 
-        if distance_to_goal < 1.0:
+        if distance_to_goal < self.min_distance:
             reward += 10
             print(
                 f"Drone: {Format.GREEN}Made it!{Format.END}\t[t={self.current_timestep}]",
@@ -137,7 +124,7 @@ class ContDroneEnv(AirSimEnv):
             done = True
 
         if self._check_collision():
-            # reward -= 10  # Penalty for collision
+            reward -= 10  # Penalty for collision
             print(
                 f"Drone: {Format.RED}Collided{Format.END}\t[t={self.current_timestep}]",
                 end="\t",
@@ -177,7 +164,6 @@ class ContDroneEnv(AirSimEnv):
             "angle_to_goal": obs["angle_to_goal"],
             "position": obs["position"],
             "lidar_data": obs["lidar_data"],
-            # "depth_image": obs["depth_image"],
         }
 
         return obs, reward, done, info
