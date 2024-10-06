@@ -9,15 +9,18 @@ from style import Format
 
 
 class ContDroneEnv(AirSimEnv):
-    def __init__(self, ip_address, step_length, image_shape):
+    def __init__(
+        self, ip_address, step_length, lidar_points=10_000, image_shape=(84, 84, 1)
+    ):
         super().__init__(image_shape)
         self.step_length = step_length
         self.image_shape = image_shape
+        self.lidar_points = lidar_points
 
-        self.max_timesteps = 200
+        self.max_timesteps = 100
         self.current_timestep = 0
 
-        self.max_points = 10_000
+        # self.max_points = 10_000
 
         self.observation_space = spaces.Dict(
             {
@@ -33,8 +36,11 @@ class ContDroneEnv(AirSimEnv):
                 "position": spaces.Box(
                     low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32
                 ),
-                "depth_image": spaces.Box(
-                    low=0, high=255, shape=self.image_shape, dtype=np.float32
+                # "depth_image": spaces.Box(
+                #     low=0, high=255, shape=self.image_shape, dtype=np.float32
+                # ),
+                "lidar_data": spaces.Box(
+                    low=0, high=np.inf, shape=(lidar_points, 3), dtype=np.float32
                 ),
             }
         )
@@ -51,10 +57,10 @@ class ContDroneEnv(AirSimEnv):
 
         # self.goal = np.array([21.7, -8.93, -1.63])
         # self.goal = np.array([3.81, -60.82, 12.36])
-        self.goal = np.array([-29.46, -43.01, 0.00])
+        self.goal = np.array([7.50, -13.20, 1.00])
 
-        # self.lidar_name = "LidarSensor1"
-        self.sensor_name = "Distance"
+        self.sensor_name = "LidarSensor1"
+        # self.sensor_name = "Distance"
 
         self._setup_flight()
 
@@ -70,26 +76,14 @@ class ContDroneEnv(AirSimEnv):
         self.drone.moveToPositionAsync(0, 0, -1, 5).join()
         self.drone.moveByVelocityAsync(0, 0, 0, 1).join()
 
-    def _transform_obs(self, responses):
-        response = responses[0]
-
-        img1d = np.array(response.image_data_float, dtype=np.float32)
-        img1d = 255 / np.maximum(np.ones(img1d.size), img1d)
-        img2d = np.reshape(img1d, (response.height, response.width))
-
-        from PIL import Image
-
-        image = Image.fromarray(img2d)
-        im_final = np.array(image.resize((256, 256)).convert("L"))
-
-        return im_final.reshape([256, 256, 1])
-
     def _get_obs(self):
-        depth_data = self._transform_obs(
-            self.drone.simGetImages(
-                [airsim.ImageRequest(0, airsim.ImageType.DepthPerspective, True, False)]
-            )
-        )
+        # depth_data = self._transform_obs(
+        #     self.drone.simGetImages(
+        #         [airsim.ImageRequest(0, airsim.ImageType.DepthPerspective, True, False)]
+        #     )
+        # )
+
+        lidar_data = self._get_lidar_data()
 
         state = self.drone.getMultirotorState().kinematics_estimated
 
@@ -100,7 +94,8 @@ class ContDroneEnv(AirSimEnv):
         angle_to_goal = self._get_angle_to_goal(state)
 
         obs = {
-            "depth_image": depth_data,
+            # "depth_image": depth_data,
+            "lidar_data": lidar_data,
             "distance_to_goal": distance_to_goal,
             "angle_to_goal": angle_to_goal,
             "velocity": velocity,
@@ -115,16 +110,17 @@ class ContDroneEnv(AirSimEnv):
         position = self._get_position(state)
         distance_to_goal = self._get_distance_to_goal(position)
 
-        velocity = self._get_velocity(state)
+        # velocity = self._get_velocity(state)
 
-        direction_to_goal = self.goal - position
-        direction_to_goal_norm = direction_to_goal / np.linalg.norm(direction_to_goal)
+        # direction_to_goal = self.goal - position
+        # direction_to_goal_norm = direction_to_goal / np.linalg.norm(direction_to_goal)
 
-        direction_dot_product = np.dot(velocity, direction_to_goal_norm)
+        # direction_dot_product = np.dot(velocity, direction_to_goal_norm)
 
         done = False
 
-        reward = direction_dot_product  # Positive if moving towards the goal
+        # reward = direction_dot_product  # Positive if moving towards the goal
+        reward = -distance_to_goal
 
         if distance_to_goal < 1.0:
             reward += 10
@@ -141,7 +137,7 @@ class ContDroneEnv(AirSimEnv):
             done = True
 
         if self._check_collision():
-            reward -= 10  # Penalty for collision
+            # reward -= 10  # Penalty for collision
             print(
                 f"Drone: {Format.RED}Collided{Format.END}\t[t={self.current_timestep}]",
                 end="\t",
@@ -180,14 +176,28 @@ class ContDroneEnv(AirSimEnv):
             "distance_to_goal": obs["distance_to_goal"],
             "angle_to_goal": obs["angle_to_goal"],
             "position": obs["position"],
-            "depth_image": obs["depth_image"],
-            "goal": self.goal,
+            "lidar_data": obs["lidar_data"],
+            # "depth_image": obs["depth_image"],
         }
 
         return obs, reward, done, info
 
     def render(self, mode="rgb_array"):
-        return np.array([])
+        response = self.client.simGetImages(
+            [airsim.ImageRequest("0", airsim.ImageType.Scene, False, False)]
+        )[0]
+
+        if response.width == 0 or response.height == 0:
+            print("Failed to capture image.")
+            return None
+
+        img1d = np.frombuffer(response.image_data_uint8, dtype=np.uint8)
+        img_rgb = img1d.reshape(response.height, response.width, 3)
+
+        if mode == "rgb_array":
+            return img_rgb
+        else:
+            return None
 
     def _get_position(self, state: airsim.KinematicsState):
         return np.array(
@@ -216,3 +226,37 @@ class ContDroneEnv(AirSimEnv):
     def _check_collision(self):
         collision_info = self.drone.simGetCollisionInfo()
         return collision_info.has_collided
+
+    def _transform_obs(self, responses):
+        response = responses[0]
+
+        img1d = np.array(response.image_data_float, dtype=np.float32)
+        img1d = 255 / np.maximum(np.ones(img1d.size), img1d)
+        img2d = np.reshape(img1d, (response.height, response.width))
+
+        from PIL import Image
+
+        image = Image.fromarray(img2d)
+        im_final = np.array(image.resize((256, 256)).convert("L"))
+
+        return im_final.reshape([256, 256, 1])
+
+    def _get_lidar_data(self):
+        lidar_data = self.drone.getLidarData(lidar_name=self.sensor_name)
+
+        point_cloud = np.array(lidar_data.point_cloud, dtype=np.float32)
+        num_points = point_cloud.size // 3
+
+        if num_points > 0:
+            point_cloud = point_cloud.reshape((num_points, 3))
+        else:
+            point_cloud = np.zeros((0, 3), dtype=np.float32)
+
+        if num_points > self.lidar_points:
+            indices = np.random.choice(num_points, self.lidar_points, replace=False)
+            point_cloud = point_cloud[indices]
+        elif num_points < self.lidar_points:
+            padding = np.zeros((self.lidar_points - num_points, 3))
+            point_cloud = np.vstack((point_cloud, padding))
+
+        return point_cloud
