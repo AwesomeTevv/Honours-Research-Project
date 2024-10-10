@@ -39,6 +39,9 @@ class ContDroneEnv(AirSimEnv):
                 "lidar_data": spaces.Box(
                     low=0, high=np.inf, shape=(lidar_points, 3), dtype=np.float32
                 ),
+                "depth_image": spaces.Box(
+                    low=0, high=255, shape=self.image_shape, dtype=np.float32
+                ),
             }
         )
         self.action_space = spaces.Box(
@@ -52,9 +55,14 @@ class ContDroneEnv(AirSimEnv):
         self.drone.enableApiControl(True)
         self.drone.armDisarm(True)
 
-        self.goal = np.array([7.50, -13.20, 1.00])
+        # self.goal = np.array([7.50, -13.20, 1.00])
+        self.goal = np.array([21.7, -8.93, -1.63])
 
         self.sensor_name = "LidarSensor1"
+
+        self.image_request = airsim.ImageRequest(
+            3, airsim.ImageType.DepthPerspective, True, False
+        )
 
         self._setup_flight()
 
@@ -73,6 +81,9 @@ class ContDroneEnv(AirSimEnv):
     def _get_obs(self):
         lidar_data = self._get_lidar_data()
 
+        responses = self.drone.simGetImages([self.image_request])
+        depth_image = self._transform_obs(responses)
+
         state = self.drone.getMultirotorState().kinematics_estimated
 
         position = self._get_position(state)
@@ -87,6 +98,7 @@ class ContDroneEnv(AirSimEnv):
             "angle_to_goal": angle_to_goal,
             "velocity": velocity,
             "position": position,
+            "depth_image": depth_image,
         }
 
         return obs
@@ -223,9 +235,9 @@ class ContDroneEnv(AirSimEnv):
         from PIL import Image
 
         image = Image.fromarray(img2d)
-        im_final = np.array(image.resize((256, 256)).convert("L"))
+        im_final = np.array(image.resize((84, 84)).convert("L"))
 
-        return im_final.reshape([256, 256, 1])
+        return im_final.reshape([84, 84, 1])
 
     def _get_lidar_data(self):
         lidar_data = self.drone.getLidarData(lidar_name=self.sensor_name)

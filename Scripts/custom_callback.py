@@ -61,11 +61,11 @@ class CustomCallback(BaseCallback):
                 )
 
             # Save the model every `save_freq` episodes
-            if self.episode_counter % self.save_freq == 0:
-                self.model.save(
-                    f"{self.save_path}/{self.model_name}_model_at_episode_{self.episode_counter}"
-                )
-                print(f"Model saved at episode {self.episode_counter}")
+            # if self.episode_counter % self.save_freq == 0:
+            #     self.model.save(
+            #         f"{self.save_path}/{self.model_name}_model_at_episode_{self.episode_counter}"
+            #     )
+            #     print(f"Model saved at episode {self.episode_counter}")
 
             self.episode_counter += 1
 

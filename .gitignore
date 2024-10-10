@@ -3,3 +3,4 @@ wandb
 Logs
 .zip
 Models
+*.zip
