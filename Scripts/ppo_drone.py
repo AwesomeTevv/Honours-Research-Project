@@ -38,6 +38,7 @@ model = PPO(
     verbose=1,
     n_steps=200,
     batch_size=50,
+    learning_rate=0.001,
     tensorboard_log="../Logs/PPO/TB/",
     device="cuda",
 )
@@ -61,7 +62,7 @@ model.policy_kwargs = {
 
 # Train the model
 model.learn(
-    total_timesteps=50_000,
+    total_timesteps=100_000,
     callback=callbacks,
     tb_log_name="ppo_airsim_drone_run_" + str(time.time()),
 )

@@ -17,7 +17,7 @@ class ContDroneEnv(AirSimEnv):
         self.image_shape = image_shape
         self.lidar_points = lidar_points
 
-        self.max_timesteps = 100
+        self.max_timesteps = 200
         self.current_timestep = 0
 
         self.min_distance = 2.0
@@ -56,7 +56,8 @@ class ContDroneEnv(AirSimEnv):
         self.drone.armDisarm(True)
 
         # self.goal = np.array([7.50, -13.20, 1.00])
-        self.goal = np.array([21.7, -8.93, -1.63])
+        # self.goal = np.array([21.7, -8.93, -1.63])
+        self.goal = np.array([19.70, -12.00, -0.45])
 
         self.sensor_name = "LidarSensor1"
 
