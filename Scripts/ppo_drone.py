@@ -11,9 +11,9 @@ from stable_baselines3.common.monitor import Monitor
 from custom_callback import CustomCallback
 
 # Initialise Weights & Biases
-wandb.init(project="airsim-drone-rl")
+wandb.init(project="airsim-drone-rl", name="AS_High")
 
-model_name = ""
+model_name = "Velodyne-HDL"
 if len(sys.argv) > 2:
     model_name = sys.argv[2]
 
